@@ -1,22 +1,39 @@
-# Just Data Copier
+# JustDataCopier - Enterprise File Transfer Utility
 
-A high-performance network file transfer utility written in Go, designed for efficient and reliable transfer of large files across networks.
+[![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
+[![Tests](https://img.shields.io/badge/Tests-Passing-green.svg)](https://github.com/yousafgill/just-data-copier)
 
-## Overview
+JustDataCopier is a high-performance network file transfer utility designed for enterprise environments. It efficiently transfers large files across network connections with features like parallel chunk transfers, adaptive network handling, compression, and transfer resume capabilities.
 
-Just Data Copier (JDC) is a command-line utility that specializes in optimizing file transfers between networked systems. It's particularly useful for transferring large datasets, media files, backups, and any scenario where network efficiency and reliability are crucial.
+## 🚀 Features
 
-## Features
+### Core Functionality
+- **High-Performance Transfer**: Optimized for large file transfers with configurable chunk sizes
+- **Parallel Processing**: Multi-threaded transfers with configurable worker count
+- **Network Optimization**: Adaptive delay and TCP optimization for various network conditions
+- **Compression**: Gzip compression with intelligent file type detection
+- **Integrity Verification**: MD5 hash verification to ensure data integrity
+- **Resume Capability**: Transfer state management for resuming interrupted transfers
 
-- **High-Speed File Transfers**: Optimized for transferring large files over networks with maximum efficiency
-- **Multi-threaded Design**: Parallel chunk transfers for maximum throughput, using configurable worker threads
-- **Adaptive Network Handling**: Dynamically adjusts to network conditions for optimal performance
-- **Smart Compression**: Automatically compresses compressible files and skips already compressed formats
-- **Resume Support**: Ability to resume interrupted transfers without starting over
-- **File Integrity Verification**: Built-in MD5 verification ensures data integrity
-- **Configurable Performance**: Fine-tune settings based on your network environment
-- **Network Auto-profiling**: Automatically detects network characteristics and optimizes transfer parameters
-- **TCP Optimization**: Implements various TCP-level optimizations for increased performance
+### Enterprise Features
+- **Structured Logging**: JSON-based logging with configurable levels using `log/slog`
+- **Error Handling**: Comprehensive error categorization and handling
+- **Configuration Management**: Flexible configuration with validation
+- **Security**: Path validation and directory traversal protection
+- **Monitoring**: Progress reporting and transfer statistics
+- **Graceful Shutdown**: Signal handling for clean application termination
+
+### Performance Optimizations
+- **Network Profiling**: Automatic network condition detection
+- **Adaptive Chunking**: Dynamic chunk size adjustment based on network performance
+- **Buffer Management**: Configurable buffer sizes for optimal throughput
+- **TCP Optimization**: Socket-level optimizations for better performance
+
+## 📋 Requirements
+
+- Go 1.21 or higher
+- Network connectivity between client and server
+- Adequate disk space for file transfers
 
 ## Usage
 
