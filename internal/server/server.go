@@ -127,7 +127,7 @@ func handleFileTransfer(reader *bufio.Reader, writer *bufio.Writer, conn net.Con
 	}
 
 	baseFilename := filepath.Base(filename)
-	slog.Info("Receiving file", "filename", baseFilename)
+	slog.Info("Receiving file", "file_size_mb", "pending")
 
 	// Read file size
 	fileSize, err := protocol.ReadInt64(ctx, reader)
@@ -144,9 +144,7 @@ func handleFileTransfer(reader *bufio.Reader, writer *bufio.Writer, conn net.Con
 		return
 	}
 
-	slog.Info("File transfer initiated",
-		"filename", baseFilename,
-		"size_mb", float64(fileSize)/(1024*1024))
+	logging.LogSessionStart("SERVER", fileSize, cfg.ChunkSize, cfg.Workers)
 
 	// Setup transfer state
 	outputPath := filepath.Join(cfg.OutputDir, baseFilename)
@@ -519,6 +517,6 @@ func verifyFileHash(ctx context.Context, reader *bufio.Reader, writer *bufio.Wri
 		return errors.NewValidationError("hash", receivedHash, "hash mismatch with source")
 	}
 
-	slog.Info("File hash verified successfully", "hash", sourceHash)
+	slog.Info("File hash verified successfully", "hash_algorithm", "MD5")
 	return nil
 }

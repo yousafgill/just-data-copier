@@ -23,7 +23,7 @@ import (
 
 // Run starts the client with the given configuration
 func Run(cfg *config.Config) error {
-	slog.Info("Starting client", "server", cfg.ServerAddress, "file", cfg.FilePath)
+	slog.Info("Starting client", "server", cfg.ServerAddress)
 
 	// Get file information
 	fileInfo, err := filesystem.GetFileInfo(cfg.FilePath)
@@ -66,9 +66,7 @@ func Run(cfg *config.Config) error {
 	// Perform network profiling
 	slog.Info("Performing network profiling...")
 	profile := network.ProfileNetwork(conn)
-	slog.Info("Network profile complete",
-		"rtt", profile.RTT,
-		"optimal_chunk_size_mb", float64(profile.OptimalChunkSize)/(1024*1024))
+	logging.LogNetworkMetrics(profile.RTT, profile.Bandwidth, profile.PacketLoss)
 
 	// Adjust configuration based on profile
 	adjustConfigForNetwork(cfg, profile)
@@ -79,7 +77,7 @@ func Run(cfg *config.Config) error {
 	writer = bufio.NewWriterSize(conn, optimalBufferSize)
 
 	// Initialize transfer
-	if err := initializeTransfer(writer, fileInfo); err != nil {
+	if err := initializeTransfer(writer, fileInfo, cfg); err != nil {
 		return err
 	}
 
@@ -142,7 +140,7 @@ func adjustConfigForNetwork(cfg *config.Config, profile network.NetworkProfile) 
 }
 
 // initializeTransfer sends initial transfer information to server
-func initializeTransfer(writer *bufio.Writer, fileInfo *filesystem.FileInfo) error {
+func initializeTransfer(writer *bufio.Writer, fileInfo *filesystem.FileInfo, cfg *config.Config) error {
 	// Send initialization command
 	if err := protocol.SendCommand(writer, protocol.CmdInit); err != nil {
 		return err
@@ -162,9 +160,7 @@ func initializeTransfer(writer *bufio.Writer, fileInfo *filesystem.FileInfo) err
 		return err
 	}
 
-	slog.Info("Transfer initialized",
-		"filename", fileInfo.Name,
-		"size_mb", float64(fileInfo.Size)/(1024*1024))
+	logging.LogSessionStart("CLIENT", fileInfo.Size, int64(cfg.ChunkSize), cfg.Workers)
 
 	return nil
 }
