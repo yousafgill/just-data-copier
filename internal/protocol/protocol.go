@@ -17,15 +17,32 @@ const (
 
 // Command operation codes
 const (
-	CmdInit     = 1 // Initialize transfer
-	CmdRequest  = 2 // Request chunk
-	CmdData     = 3 // Send chunk data
-	CmdComplete = 4 // Transfer complete
-	CmdError    = 5 // Error occurred
-	CmdHash     = 6 // File hash for verification
-	CmdPing     = 7 // Ping for network profiling
-	CmdPong     = 8 // Pong response to ping
-	CmdVersion  = 9 // Protocol version negotiation
+	CmdInit      = 1  // Initialize transfer
+	CmdRequest   = 2  // Request chunk
+	CmdData      = 3  // Send chunk data
+	CmdComplete  = 4  // Transfer complete
+	CmdError     = 5  // Error occurred
+	CmdHash      = 6  // File hash for verification
+	CmdHashAlgo  = 7  // Hash algorithm exchange
+	CmdPing      = 8  // Ping for network profiling
+	CmdPong      = 9  // Pong response to ping
+	CmdVersion   = 10 // Protocol version negotiation
+	CmdResume    = 11 // Resume information
+	CmdResumeAck = 12 // Resume acknowledgment
+)
+
+// Hash algorithm types
+type HashAlgorithm string
+
+const (
+	HashMD5     HashAlgorithm = "md5"
+	HashSHA256  HashAlgorithm = "sha256"
+	HashBLAKE2b HashAlgorithm = "blake2b"
+)
+
+// Size thresholds for hash algorithm selection
+const (
+	LargeFileSizeThreshold = 50 * 1024 * 1024 * 1024 // 50GB in bytes
 )
 
 // Message represents a protocol message
@@ -104,6 +121,160 @@ func FlushWriter(writer *bufio.Writer) error {
 		return errors.NewProtocolError("flush", "failed to flush writer", err)
 	}
 	return nil
+}
+
+// ResumeInfo represents resume information exchanged between client and server
+type ResumeInfo struct {
+	CanResume       bool   `json:"can_resume"`
+	ResumeOffset    int64  `json:"resume_offset"`
+	CompletedChunks []bool `json:"completed_chunks"`
+	TotalChunks     int64  `json:"total_chunks"`
+}
+
+// SendResumeInfo sends resume information to the peer
+func SendResumeInfo(writer *bufio.Writer, resumeInfo *ResumeInfo) error {
+	// Send resume command
+	if err := SendCommand(writer, CmdResume); err != nil {
+		return err
+	}
+
+	// Send can_resume flag
+	if resumeInfo.CanResume {
+		if err := writer.WriteByte(1); err != nil {
+			return errors.NewProtocolError("send_resume_info", "failed to send can_resume flag", err)
+		}
+
+		// Send resume offset
+		if err := SendInt64(writer, resumeInfo.ResumeOffset); err != nil {
+			return err
+		}
+
+		// Send total chunks
+		if err := SendInt64(writer, resumeInfo.TotalChunks); err != nil {
+			return err
+		}
+
+		// Send completed chunks bitmap (simplified as comma-separated)
+		chunkList := ""
+		for i, completed := range resumeInfo.CompletedChunks {
+			if completed {
+				if chunkList != "" {
+					chunkList += ","
+				}
+				chunkList += fmt.Sprintf("%d", i)
+			}
+		}
+		if err := SendString(writer, chunkList); err != nil {
+			return err
+		}
+	} else {
+		if err := writer.WriteByte(0); err != nil {
+			return errors.NewProtocolError("send_resume_info", "failed to send can_resume flag", err)
+		}
+	}
+
+	return FlushWriter(writer)
+}
+
+// ReadResumeInfo reads resume information from the peer
+func ReadResumeInfo(ctx context.Context, reader *bufio.Reader) (*ResumeInfo, error) {
+	resumeInfo := &ResumeInfo{}
+
+	// Read can_resume flag
+	canResumeByte, err := readByteWithContext(ctx, reader)
+	if err != nil {
+		return nil, errors.NewProtocolError("read_resume_info", "failed to read can_resume flag", err)
+	}
+	resumeInfo.CanResume = canResumeByte == 1
+
+	if resumeInfo.CanResume {
+		// Read resume offset
+		resumeInfo.ResumeOffset, err = ReadInt64(ctx, reader)
+		if err != nil {
+			return nil, err
+		}
+
+		// Read total chunks
+		resumeInfo.TotalChunks, err = ReadInt64(ctx, reader)
+		if err != nil {
+			return nil, err
+		}
+
+		// Read completed chunks
+		chunkListStr, err := ReadString(ctx, reader)
+		if err != nil {
+			return nil, err
+		}
+
+		// Initialize completed chunks array
+		resumeInfo.CompletedChunks = make([]bool, resumeInfo.TotalChunks)
+
+		// Parse completed chunks
+		if chunkListStr != "" {
+			chunkStrs := strings.Split(chunkListStr, ",")
+			for _, chunkStr := range chunkStrs {
+				if chunkIndex, parseErr := strconv.ParseInt(strings.TrimSpace(chunkStr), 10, 64); parseErr == nil {
+					if chunkIndex >= 0 && chunkIndex < resumeInfo.TotalChunks {
+						resumeInfo.CompletedChunks[chunkIndex] = true
+					}
+				}
+			}
+		}
+	}
+
+	return resumeInfo, nil
+}
+
+// SendResumeAck sends resume acknowledgment
+func SendResumeAck(writer *bufio.Writer, accepted bool) error {
+	if err := SendCommand(writer, CmdResumeAck); err != nil {
+		return err
+	}
+
+	if accepted {
+		if err := writer.WriteByte(1); err != nil {
+			return errors.NewProtocolError("send_resume_ack", "failed to send accepted flag", err)
+		}
+	} else {
+		if err := writer.WriteByte(0); err != nil {
+			return errors.NewProtocolError("send_resume_ack", "failed to send accepted flag", err)
+		}
+	}
+
+	return FlushWriter(writer)
+}
+
+// ReadResumeAck reads resume acknowledgment
+func ReadResumeAck(ctx context.Context, reader *bufio.Reader) (bool, error) {
+	ackByte, err := readByteWithContext(ctx, reader)
+	if err != nil {
+		return false, errors.NewProtocolError("read_resume_ack", "failed to read ack flag", err)
+	}
+	return ackByte == 1, nil
+}
+
+// SendHashAlgorithm sends hash algorithm to writer
+func SendHashAlgorithm(writer *bufio.Writer, algorithm HashAlgorithm) error {
+	if err := SendCommand(writer, CmdHashAlgo); err != nil {
+		return err
+	}
+	return SendString(writer, string(algorithm))
+}
+
+// ReadHashAlgorithm reads hash algorithm from reader
+func ReadHashAlgorithm(ctx context.Context, reader *bufio.Reader) (HashAlgorithm, error) {
+	algoStr, err := ReadString(ctx, reader)
+	if err != nil {
+		return "", err
+	}
+
+	// Validate algorithm
+	switch HashAlgorithm(algoStr) {
+	case HashMD5, HashSHA256, HashBLAKE2b:
+		return HashAlgorithm(algoStr), nil
+	default:
+		return "", errors.NewProtocolError("hash_algorithm", "invalid hash algorithm", fmt.Errorf("unsupported algorithm: %s", algoStr))
+	}
 }
 
 // Helper functions for context-aware I/O operations

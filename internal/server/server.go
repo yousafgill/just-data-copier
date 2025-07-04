@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -153,6 +154,35 @@ func handleFileTransfer(reader *bufio.Reader, writer *bufio.Writer, conn net.Con
 	// Try to resume existing transfer
 	transferState, resuming := tryResumeTransfer(baseFilename, cfg, fileSize, numChunks)
 
+	// Send resume information to client
+	if err := sendResumeInfoToClient(writer, transferState, resuming, numChunks); err != nil {
+		slog.Error("Failed to send resume info", "error", err)
+		protocol.SendError(writer, "Resume negotiation failed")
+		return
+	}
+
+	// Wait for client's resume decision
+	clientAcceptsResume, err := waitForResumeDecision(ctx, reader)
+	if err != nil {
+		slog.Error("Failed to read resume decision", "error", err)
+		protocol.SendError(writer, "Resume negotiation failed")
+		return
+	}
+
+	// If client doesn't accept resume, start fresh
+	if resuming && !clientAcceptsResume {
+		slog.Info("Client rejected resume, starting fresh transfer")
+		resuming = false
+		transferState = nil
+		// Remove the existing partial file and state
+		if err := os.Remove(outputPath); err != nil && !os.IsNotExist(err) {
+			slog.Warn("Failed to remove partial file", "error", err)
+		}
+		if err := filesystem.RemoveTransferState(baseFilename, cfg.OutputDir); err != nil {
+			slog.Warn("Failed to remove transfer state", "error", err)
+		}
+	}
+
 	// Create or open output file
 	outFile, err := createOrOpenOutputFile(outputPath, resuming)
 	if err != nil {
@@ -203,7 +233,7 @@ func handleFileTransfer(reader *bufio.Reader, writer *bufio.Writer, conn net.Con
 
 	// Verify file hash if requested
 	if cfg.VerifyHash {
-		if err := verifyFileHash(ctx, reader, writer, outFile); err != nil {
+		if err := verifyFileHash(ctx, reader, writer, outFile, fileSize); err != nil {
 			slog.Error("Hash verification failed", "error", err)
 			os.Remove(outputPath)
 			protocol.SendError(writer, "Hash verification failed")
@@ -286,32 +316,17 @@ func processChunks(ctx context.Context, reader *bufio.Reader, writer *bufio.Writ
 
 	buffer := make([]byte, cfg.ChunkSize)
 
-	// Save state periodically
-	stateTicker := time.NewTicker(30 * time.Second)
-	defer stateTicker.Stop()
-
-	go func() {
-		for {
-			select {
-			case <-stateTicker.C:
-				if err := filesystem.SaveTransferState(state, cfg.OutputDir); err != nil {
-					slog.Error("Failed to save transfer state", "error", err)
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
 	// Process each chunk
 	for chunkIdx := int64(0); chunkIdx < state.NumChunks; chunkIdx++ {
 		if ctx.Err() != nil {
+			// Save state before returning on cancellation
+			filesystem.SaveTransferState(state, cfg.OutputDir)
 			return ctx.Err()
 		}
 
-		// Skip already received chunks
+		// Skip already received chunks - don't request them from client
 		if state.ChunksReceived[chunkIdx] {
-			stats.UpdateTransferred(cfg.ChunkSize)
+			// Skip this chunk entirely, already completed
 			continue
 		}
 
@@ -329,12 +344,19 @@ func processChunks(ctx context.Context, reader *bufio.Reader, writer *bufio.Writ
 		actualSize, err := receiveChunkWithRetries(ctx, reader, writer, outFile,
 			offset, cfg.ChunkSize, buffer, stats, cfg)
 		if err != nil {
+			// Save state before returning on error
+			filesystem.SaveTransferState(state, cfg.OutputDir)
 			return err
 		}
 
 		// Mark chunk as received
 		state.ChunksReceived[chunkIdx] = true
 		netStats.UpdateStats(actualSize)
+
+		// Save state immediately after each chunk for resilience
+		if err := filesystem.SaveTransferState(state, cfg.OutputDir); err != nil {
+			slog.Error("Failed to save transfer state", "chunk", chunkIdx, "error", err)
+		}
 	}
 
 	return nil
@@ -480,8 +502,16 @@ func receiveUncompressedChunk(ctx context.Context, reader *bufio.Reader, buffer 
 	return buffer[:size], nil
 }
 
-// verifyFileHash verifies the integrity of the received file
-func verifyFileHash(ctx context.Context, reader *bufio.Reader, writer *bufio.Writer, file *os.File) error {
+// verifyFileHash verifies the integrity of the received file using size-based algorithm selection
+func verifyFileHash(ctx context.Context, reader *bufio.Reader, writer *bufio.Writer, file *os.File, fileSize int64) error {
+	// Select appropriate hash algorithm based on file size
+	algorithm := filesystem.SelectHashAlgorithm(fileSize)
+
+	// Send hash algorithm to client
+	if err := protocol.SendHashAlgorithm(writer, algorithm); err != nil {
+		return err
+	}
+
 	// Request hash from client
 	if err := protocol.SendCommand(writer, protocol.CmdHash); err != nil {
 		return err
@@ -506,17 +536,63 @@ func verifyFileHash(ctx context.Context, reader *bufio.Reader, writer *bufio.Wri
 		return err
 	}
 
-	// Calculate hash of received file
-	receivedHash, err := filesystem.CalculateFileHash(file)
+	// Calculate hash of received file using the same algorithm
+	receivedHash, err := filesystem.CalculateFileHashWithAlgorithm(file, algorithm)
 	if err != nil {
 		return err
 	}
 
 	// Compare hashes
 	if sourceHash != receivedHash {
+		// Send hash verification failure to client
+		protocol.SendError(writer, fmt.Sprintf("Hash mismatch (%s): source=%s, received=%s", algorithm, sourceHash, receivedHash))
 		return errors.NewValidationError("hash", receivedHash, "hash mismatch with source")
 	}
 
-	slog.Info("File hash verified successfully", "hash_algorithm", "MD5")
+	// Send hash verification success confirmation to client
+	if err := protocol.SendCommand(writer, protocol.CmdHash); err != nil {
+		return err
+	}
+
+	if err := protocol.SendString(writer, "HASH_VERIFIED"); err != nil {
+		return err
+	}
+
+	if err := protocol.FlushWriter(writer); err != nil {
+		return err
+	}
+
+	slog.Info("File hash verified successfully", "hash_algorithm", "MD5", "source_hash", sourceHash, "received_hash", receivedHash)
 	return nil
+}
+
+// sendResumeInfoToClient sends resume information to the client
+func sendResumeInfoToClient(writer *bufio.Writer, transferState *filesystem.TransferState, resuming bool, numChunks int64) error {
+	resumeInfo := &protocol.ResumeInfo{
+		CanResume:   resuming,
+		TotalChunks: numChunks,
+	}
+
+	if resuming && transferState != nil {
+		resumeInfo.ResumeOffset = calculateResumeOffset(transferState)
+		resumeInfo.CompletedChunks = make([]bool, numChunks)
+		copy(resumeInfo.CompletedChunks, transferState.ChunksReceived)
+	}
+
+	return protocol.SendResumeInfo(writer, resumeInfo)
+}
+
+// waitForResumeDecision waits for the client's resume decision
+func waitForResumeDecision(ctx context.Context, reader *bufio.Reader) (bool, error) {
+	cmd, err := protocol.ReadCommand(ctx, reader)
+	if err != nil {
+		return false, err
+	}
+
+	if cmd != protocol.CmdResumeAck {
+		return false, errors.NewProtocolError("wait_resume_decision",
+			fmt.Sprintf("expected CmdResumeAck, got %d", cmd), nil)
+	}
+
+	return protocol.ReadResumeAck(ctx, reader)
 }
