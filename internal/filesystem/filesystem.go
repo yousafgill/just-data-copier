@@ -2,8 +2,11 @@ package filesystem
 
 import (
 	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"hash"
 	"io"
 	"log/slog"
 	"os"
@@ -13,6 +16,9 @@ import (
 
 	"justdatacopier/internal/config"
 	"justdatacopier/internal/errors"
+	"justdatacopier/internal/protocol"
+
+	"golang.org/x/crypto/blake2b"
 )
 
 // TransferState represents the state of a file transfer for resume capability
@@ -154,16 +160,42 @@ func fallocate(file *os.File, size int64) error {
 		errors.NewValidationError("system", "windows", "fallocate not supported"))
 }
 
-// CalculateFileHash calculates MD5 hash of a file
-func CalculateFileHash(file *os.File) (string, error) {
-	// Reset file position
+// SelectHashAlgorithm chooses the best hash algorithm based on file size
+func SelectHashAlgorithm(fileSize int64) protocol.HashAlgorithm {
+	if fileSize >= protocol.LargeFileSizeThreshold {
+		// For files >= 50GB, use BLAKE2b (fastest and secure)
+		return protocol.HashBLAKE2b
+	}
+	// For smaller files, use MD5 (fastest for small files)
+	return protocol.HashMD5
+}
+
+// CalculateFileHashWithAlgorithm calculates file hash using specified algorithm
+func CalculateFileHashWithAlgorithm(file *os.File, algorithm protocol.HashAlgorithm) (string, error) {
+	var hasher hash.Hash
+	var err error
+
+	switch algorithm {
+	case protocol.HashMD5:
+		hasher = md5.New()
+	case protocol.HashSHA256:
+		hasher = sha256.New()
+	case protocol.HashBLAKE2b:
+		hasher, err = blake2b.New256(nil)
+		if err != nil {
+			return "", fmt.Errorf("failed to create BLAKE2b hasher: %w", err)
+		}
+	default:
+		return "", fmt.Errorf("unsupported hash algorithm: %s", algorithm)
+	}
+
+	// Reset file position to beginning
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return "", errors.NewFileSystemError("seek", file.Name(), err)
 	}
 
-	hash := md5.New()
+	// Use buffer for efficient streaming
 	buffer := make([]byte, config.HashBufferSize)
-
 	for {
 		n, err := file.Read(buffer)
 		if err != nil {
@@ -172,13 +204,15 @@ func CalculateFileHash(file *os.File) (string, error) {
 			}
 			return "", errors.NewFileSystemError("read_hash", file.Name(), err)
 		}
-
-		if _, err := hash.Write(buffer[:n]); err != nil {
-			return "", errors.NewFileSystemError("hash_write", file.Name(), err)
-		}
+		hasher.Write(buffer[:n])
 	}
 
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+// CalculateFileHash calculates MD5 hash of a file (backward compatibility)
+func CalculateFileHash(file *os.File) (string, error) {
+	return CalculateFileHashWithAlgorithm(file, protocol.HashMD5)
 }
 
 // EnsureDirectoryExists creates a directory if it doesn't exist

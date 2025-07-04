@@ -81,12 +81,32 @@ func Run(cfg *config.Config) error {
 		return err
 	}
 
+	// Negotiate resume with server
+	ctx := context.Background()
+	resumeState, err := negotiateResume(ctx, reader, writer, fileInfo, cfg)
+	if err != nil {
+		return err
+	}
+
 	// Setup transfer statistics
 	stats := &progress.Stats{
 		TotalBytes: fileInfo.Size,
 		StartTime:  time.Now(),
 		FileSize:   fileInfo.Size,
 		Filename:   fileInfo.Name,
+	}
+
+	// Apply resume state to statistics
+	if resumeState.CanResume {
+		stats.SetTransferred(resumeState.ResumeOffset)
+		slog.Info("Client resuming transfer",
+			"resume_offset_mb", float64(resumeState.ResumeOffset)/(1024*1024),
+			"completed_chunks", countCompletedChunks(resumeState.CompletedChunks),
+			"total_chunks", resumeState.TotalChunks)
+
+		logging.LogSessionStart("CLIENT_RESUME", fileInfo.Size, int64(cfg.ChunkSize), cfg.Workers)
+	} else {
+		logging.LogSessionStart("CLIENT", fileInfo.Size, int64(cfg.ChunkSize), cfg.Workers)
 	}
 
 	// Setup network statistics
@@ -108,7 +128,7 @@ func Run(cfg *config.Config) error {
 	}
 
 	// Handle server requests
-	return handleServerRequests(reader, writer, file, stats, netStats, &bufferPool, cfg)
+	return handleServerRequests(reader, writer, file, stats, netStats, &bufferPool, cfg, resumeState)
 }
 
 // adjustConfigForNetwork adjusts configuration based on network profile
@@ -167,25 +187,40 @@ func initializeTransfer(writer *bufio.Writer, fileInfo *filesystem.FileInfo, cfg
 
 // handleServerRequests handles requests from the server
 func handleServerRequests(reader *bufio.Reader, writer *bufio.Writer, file *os.File,
-	stats *progress.Stats, netStats *network.NetworkStats, bufferPool *sync.Pool, cfg *config.Config) error {
+	stats *progress.Stats, netStats *network.NetworkStats, bufferPool *sync.Pool, cfg *config.Config, resumeState *ResumeState) error {
 
 	ctx := context.Background()
+	var cmdByte byte
+	var err error
 
-	for {
+	// If we have a command from resume negotiation, use it first
+	if resumeState.NextCommand != 0 {
+		cmdByte = resumeState.NextCommand
+		resumeState.NextCommand = 0 // Clear it after using
+	} else {
 		// Read command from server
-		cmdByte, err := protocol.ReadCommand(ctx, reader)
+		cmdByte, err = protocol.ReadCommand(ctx, reader)
 		if err != nil {
 			return errors.NewNetworkError("read_command", "", err)
 		}
+	}
 
+	for {
 		switch cmdByte {
 		case protocol.CmdRequest:
-			if err := handleChunkRequest(ctx, reader, writer, file, stats, netStats, bufferPool, cfg); err != nil {
+			if err := handleChunkRequest(ctx, reader, writer, file, stats, netStats, bufferPool, cfg, resumeState); err != nil {
+				return err
+			}
+
+		case protocol.CmdHashAlgo:
+			// Hash algorithm command followed by hash request - handle together
+			if err := handleHashRequest(ctx, reader, writer, file); err != nil {
 				return err
 			}
 
 		case protocol.CmdHash:
-			if err := handleHashRequest(writer, file); err != nil {
+			// Legacy hash request (MD5 only) - for backward compatibility
+			if err := handleLegacyHashRequest(ctx, reader, writer, file); err != nil {
 				return err
 			}
 
@@ -203,13 +238,19 @@ func handleServerRequests(reader *bufio.Reader, writer *bufio.Writer, file *os.F
 		default:
 			return errors.NewProtocolError("unknown_command", "unexpected command from server", nil)
 		}
+
+		// Read next command
+		cmdByte, err = protocol.ReadCommand(ctx, reader)
+		if err != nil {
+			return errors.NewNetworkError("read_command", "", err)
+		}
 	}
 }
 
 // handleChunkRequest handles a chunk request from the server
 func handleChunkRequest(ctx context.Context, reader *bufio.Reader, writer *bufio.Writer,
 	file *os.File, stats *progress.Stats, netStats *network.NetworkStats,
-	bufferPool *sync.Pool, cfg *config.Config) error {
+	bufferPool *sync.Pool, cfg *config.Config, resumeState *ResumeState) error {
 
 	// Read chunk offset
 	offset, err := protocol.ReadInt64(ctx, reader)
@@ -243,9 +284,69 @@ func handleChunkRequest(ctx context.Context, reader *bufio.Reader, writer *bufio
 	return nil
 }
 
-// handleHashRequest handles a hash request from the server
-func handleHashRequest(writer *bufio.Writer, file *os.File) error {
-	// Calculate file hash
+// handleHashRequest handles a hash request from the server with algorithm negotiation
+func handleHashRequest(ctx context.Context, reader *bufio.Reader, writer *bufio.Writer, file *os.File) error {
+	// First, read hash algorithm from server
+	algorithm, err := protocol.ReadHashAlgorithm(ctx, reader)
+	if err != nil {
+		return err
+	}
+
+	slog.Info("Received hash algorithm", "algorithm", algorithm)
+
+	// Calculate file hash using the specified algorithm
+	hash, err := filesystem.CalculateFileHashWithAlgorithm(file, algorithm)
+	if err != nil {
+		return err
+	}
+
+	// Send hash command and hash value
+	if err := protocol.SendCommand(writer, protocol.CmdHash); err != nil {
+		return err
+	}
+
+	if err := protocol.SendString(writer, hash); err != nil {
+		return err
+	}
+
+	if err := protocol.FlushWriter(writer); err != nil {
+		return err
+	}
+
+	slog.Info("File hash sent", "algorithm", algorithm, "hash", hash)
+
+	// Wait for server's hash verification response
+	cmdByte, err := protocol.ReadCommand(ctx, reader)
+	if err != nil {
+		return err
+	}
+
+	if cmdByte == protocol.CmdError {
+		// Hash verification failed on server
+		errorMsg, _ := protocol.ReadString(ctx, reader)
+		slog.Error("Hash verification failed on server", "error", errorMsg)
+		return errors.NewValidationError("hash_verification", hash, "server reported hash mismatch")
+	} else if cmdByte == protocol.CmdHash {
+		// Hash verification successful
+		verificationMsg, err := protocol.ReadString(ctx, reader)
+		if err != nil {
+			return err
+		}
+		if verificationMsg == "HASH_VERIFIED" {
+			slog.Info("Hash verification successful", "algorithm", algorithm, "source_hash", hash, "verified_by_server", true)
+		} else {
+			slog.Warn("Unexpected hash verification response", "message", verificationMsg)
+		}
+	} else {
+		return errors.NewProtocolError("hash_verification", "unexpected response from server after hash", nil)
+	}
+
+	return nil
+}
+
+// handleLegacyHashRequest handles legacy hash requests (MD5 only, for backward compatibility)
+func handleLegacyHashRequest(ctx context.Context, reader *bufio.Reader, writer *bufio.Writer, file *os.File) error {
+	// Use MD5 for legacy requests
 	hash, err := filesystem.CalculateFileHash(file)
 	if err != nil {
 		return err
@@ -264,7 +365,34 @@ func handleHashRequest(writer *bufio.Writer, file *os.File) error {
 		return err
 	}
 
-	slog.Info("File hash sent", "hash", hash)
+	slog.Info("Legacy file hash sent", "algorithm", "md5", "hash", hash)
+
+	// Wait for server's hash verification response
+	cmdByte, err := protocol.ReadCommand(ctx, reader)
+	if err != nil {
+		return err
+	}
+
+	if cmdByte == protocol.CmdError {
+		// Hash verification failed on server
+		errorMsg, _ := protocol.ReadString(ctx, reader)
+		slog.Error("Hash verification failed on server", "error", errorMsg)
+		return errors.NewValidationError("hash_verification", hash, "server reported hash mismatch")
+	} else if cmdByte == protocol.CmdHash {
+		// Hash verification successful
+		verificationMsg, err := protocol.ReadString(ctx, reader)
+		if err != nil {
+			return err
+		}
+		if verificationMsg == "HASH_VERIFIED" {
+			slog.Info("Hash verification successful", "algorithm", "md5", "source_hash", hash, "verified_by_server", true)
+		} else {
+			slog.Warn("Unexpected hash verification response", "message", verificationMsg)
+		}
+	} else {
+		return errors.NewProtocolError("hash_verification", "unexpected response from server after hash", nil)
+	}
+
 	return nil
 }
 
@@ -452,6 +580,88 @@ func sendDataInPieces(ctx context.Context, writer *bufio.Writer, data []byte) er
 	}
 
 	return nil
+}
+
+// ResumeState represents client-side resume state
+type ResumeState struct {
+	CanResume       bool
+	ResumeOffset    int64
+	CompletedChunks []bool
+	TotalChunks     int64
+	NextCommand     byte // Store the next command after resume negotiation
+}
+
+// negotiateResume handles resume negotiation with server
+func negotiateResume(ctx context.Context, reader *bufio.Reader, writer *bufio.Writer,
+	fileInfo *filesystem.FileInfo, cfg *config.Config) (*ResumeState, error) {
+
+	resumeState := &ResumeState{
+		CanResume: false,
+	}
+
+	// Calculate total chunks for this transfer
+	totalChunks := (fileInfo.Size + cfg.ChunkSize - 1) / cfg.ChunkSize
+	resumeState.TotalChunks = totalChunks
+
+	// Wait for server's response - could be resume info or a request
+	cmd, err := protocol.ReadCommand(ctx, reader)
+	if err != nil {
+		return resumeState, err
+	}
+
+	if cmd == protocol.CmdResume {
+		// Server is offering resume - read the resume info
+		serverResumeInfo, err := protocol.ReadResumeInfo(ctx, reader)
+		if err != nil {
+			slog.Warn("Failed to read server resume info", "error", err)
+			// Send negative ack and continue without resume
+			protocol.SendResumeAck(writer, false)
+			// Return state indicating no resume and continue with normal flow
+			return resumeState, nil
+		}
+
+		if serverResumeInfo.CanResume && serverResumeInfo.TotalChunks == totalChunks {
+			// Server can resume and chunk count matches
+			resumeState.CanResume = true
+			resumeState.ResumeOffset = serverResumeInfo.ResumeOffset
+			resumeState.CompletedChunks = make([]bool, totalChunks)
+			copy(resumeState.CompletedChunks, serverResumeInfo.CompletedChunks)
+
+			slog.Info("Resume negotiation successful",
+				"resume_offset_mb", float64(resumeState.ResumeOffset)/(1024*1024),
+				"completed_chunks", countCompletedChunks(resumeState.CompletedChunks))
+
+			// Send positive ack
+			if err := protocol.SendResumeAck(writer, true); err != nil {
+				return resumeState, err
+			}
+		} else {
+			slog.Info("Resume not compatible, starting fresh transfer")
+			// Send negative ack
+			if err := protocol.SendResumeAck(writer, false); err != nil {
+				return resumeState, err
+			}
+		}
+
+		// After resume negotiation, the server will start sending chunk requests directly
+		// No need to wait for another command
+		return resumeState, nil
+	}
+
+	// If the first command was not CmdResume, store it for the main loop to handle
+	resumeState.NextCommand = cmd
+	return resumeState, nil
+}
+
+// countCompletedChunks counts how many chunks are completed
+func countCompletedChunks(chunks []bool) int64 {
+	count := int64(0)
+	for _, completed := range chunks {
+		if completed {
+			count++
+		}
+	}
+	return count
 }
 
 // Helper functions for min/max operations
