@@ -6,23 +6,11 @@ This folder contains practical examples and best configurations for various real
 
 ### 🏢 **Business & Enterprise**
 - [Database Backup Transfer](./database-backup/README.md) - Moving large database backups (100GB-2TB)
-- [VM Image Migration](./vm-migration/README.md) - Transferring virtual machine files and snapshots
-- [Server Log Collection](./log-aggregation/README.md) - Gathering logs from multiple Windows servers
+
 
 ### 🌐 **Remote Office & Branches**
 - [Branch Office Backup](./branch-office/README.md) - Daily backups over internet connections
-- [Development File Sync](./dev-assets/README.md) - Syncing development files and resources
-- [Media File Distribution](./media-distribution/README.md) - Moving large media files to remote locations
 
-### ☁️ **Cloud & Remote**
-- [Cloud Migration](./cloud-migration/README.md) - Moving data from on-premises to cloud
-- [Disaster Recovery](./disaster-recovery/README.md) - Emergency data replication
-- [Cross-Site Sync](./cross-region/README.md) - Syncing data between different locations
-
-### 🔬 **Development & Research**
-- [Large Dataset Transfer](./scientific-data/README.md) - Moving research files and datasets
-- [Build Output Distribution](./build-artifacts/README.md) - Distributing compiled applications
-- [Machine Learning Data](./ml-datasets/README.md) - Transferring training datasets
 
 ## 🚀 Quick Setup Guide
 
@@ -100,13 +88,5 @@ jdc.exe -file large.dat -connect server:8000 -buffer 131072 -workers 2
 3. **Document Settings**: Write down what settings work best for your network
 4. **Test Changes**: Always test new settings in a safe environment first
 
-## 🔗 Helpful Tools
-
-- [Network Testing Tools](./tools/network-testing.md) - How to test your network speed
-- [Batch Scripts](./scripts/README.md) - Ready-to-use scripts for Windows
-- [Monitoring Setup](./monitoring/README.md) - How to watch your transfers
-- [Security Tips](./security/README.md) - Keeping your transfers secure
-
----
 
 **Note**: All examples work on Windows and include sample batch files and validation steps. Adjust the settings based on your actual network speed and conditions.

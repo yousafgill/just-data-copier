@@ -1,23 +1,24 @@
-# Branch Office Backup Over Internet
+# Branch Office File Transfer Over Internet
 
-This example shows you how to reliably send daily backups from your branch office to the main office over an internet connection.
+This example shows you how to reliably send files from your branch office to the main office over an internet connection, optimized for Windows environments with common file types like ZIP archives, RAR files, and video content.
 
 ## 📊 What We're Doing
 
-**Situation**: You need to send daily backups from a branch office to your main data center over the internet
-- **File Sizes**: Usually 10GB to 200GB compressed backup files
+**Situation**: You need to send daily files from a branch office to your main data center over the internet
+- **File Types**: ZIP archives, RAR files, video files (MP4, AVI, MKV), and various media content
+- **File Sizes**: Few MBs to several GBs, sometimes TB-sized video collections
 - **Network**: Regular internet connection, maybe 50-200 Mbps, speed can vary throughout the day
-- **Challenges**: Internet can be slow or unreliable, connection might drop
+- **Challenges**: Internet can be slow or unreliable, connection might drop during large transfers
 - **Must Have**: Files must get through even if the connection is bad, and resume if interrupted
 
 ## 🎯 Best Settings for Internet Transfers
 
-### Main Office Server Setup (Where Backups Go)
+### Main Office Server Setup (Where Files Go)
 ```cmd
-rem Set up server at main office to receive branch backups
+rem Set up server at main office to receive branch files
 jdc.exe -server ^
     -listen 0.0.0.0:8000 ^
-    -output "D:\BranchBackups" ^
+    -output "D:\BranchFiles" ^
     -workers 4 ^
     -buffer 524288 ^
     -timeout 8h ^
@@ -25,10 +26,10 @@ jdc.exe -server ^
     -log-level info
 ```
 
-### Branch Office Setup (Sending Backups)
+### Branch Office Setup (Sending Files)
 ```cmd
-rem Send backup from branch office with internet-friendly settings
-jdc.exe -file "C:\Backup\branch_backup_20250705.zip" ^
+rem Send files from branch office with internet-friendly settings
+jdc.exe -file "C:\Files\project_archive_20250705.zip" ^
     -connect main-office.company.com:8000 ^
     -chunk 2097152 ^
     -buffer 524288 ^
@@ -53,25 +54,32 @@ jdc.exe -file "C:\Backup\branch_backup_20250705.zip" ^
 ### Extra Safety for Unreliable Internet
 - **Min/Max Delay**: `5ms-500ms` - Gives room to adjust for network changes
 - **Retries**: `15` - More retries because internet can be flaky
-- **Timeout**: `8h` - Long timeout for overnight transfers
+- **Timeout**: `8h` - Long timeout for large video files and overnight transfers
+- **Compression**: `false` - ZIP/RAR files are already compressed, videos don't compress well
+- **Verify**: `true` - Always verify file integrity after transfer
 
 ## 📋 Complete Branch Office Script
 
-### Smart Branch Office Transfer Script
+## 📋 Windows File Transfer Scripts
+
+### Smart File Transfer Script
 ```batch
 @echo off
 setlocal enabledelayedexpansion
 
-rem branch-backup-transfer.bat
-rem Smart backup transfer that adapts to your internet connection
+rem branch-file-transfer.bat
+rem Smart file transfer for common Windows file types
 
 rem Setup
 set BRANCH_NAME=%COMPUTERNAME%
-set BACKUP_DIR=C:\Backup
+set SOURCE_DIR=C:\Files
 set MAIN_OFFICE=main-office.company.com:8000
-set LOG_FILE=C:\Logs\branch-backup.log
+set LOG_FILE=C:\Logs\branch-transfer.log
 set TODAY=%date:~10,4%%date:~4,2%%date:~7,2%
 set MAX_ATTEMPTS=3
+
+rem Supported file extensions
+set EXTENSIONS=*.zip *.rar *.7z *.mp4 *.avi *.mkv *.mov *.wmv *.flv *.webm *.m4v
 
 rem Function to write log messages
 :log
@@ -79,8 +87,8 @@ echo [%date% %time%] [%BRANCH_NAME%] %~1 >> "%LOG_FILE%"
 echo [%date% %time%] [%BRANCH_NAME%] %~1
 goto :eof
 
-rem Function to test internet connection
-:test_internet
+rem Function to test internet connection and get optimal settings
+:test_connection
 call :log "Testing internet connection..."
 
 rem Test if we can reach main office
@@ -90,42 +98,79 @@ if !errorlevel! neq 0 (
     exit /b 1
 )
 
-rem Get rough ping time to adjust settings
-for /f "tokens=4 delims== " %%i in ('ping -n 1 main-office.company.com ^| find "time="') do (
-    set ping_info=%%i
+rem Get connection quality and set transfer parameters
+for /f "tokens=4 delims== " %%i in ('ping -n 3 main-office.company.com ^| find "Average"') do (
+    set avg_ping=%%i
+    set avg_ping=!avg_ping:ms=!
 )
 
-rem Set transfer settings based on ping
-if defined ping_info (
-    call :log "Connection looks good - using balanced settings"
+rem Set optimal settings based on ping time
+if !avg_ping! gtr 100 (
+    call :log "High latency connection detected (!avg_ping!ms) - using conservative settings"
+    set CHUNK_SIZE=1048576
+    set WORKERS=2
+    set MAX_DELAY=1000ms
+) else if !avg_ping! gtr 50 (
+    call :log "Medium latency connection detected (!avg_ping!ms) - using balanced settings"
     set CHUNK_SIZE=2097152
     set WORKERS=3
     set MAX_DELAY=500ms
 ) else (
-    call :log "Connection might be slow - using conservative settings"
-    set CHUNK_SIZE=1048576
-    set WORKERS=2
-    set MAX_DELAY=1000ms
+    call :log "Good connection detected (!avg_ping!ms) - using optimal settings"
+    set CHUNK_SIZE=4194304
+    set WORKERS=4
+    set MAX_DELAY=200ms
 )
 
 exit /b 0
 
-rem Function to transfer backup file with retries
-:transfer_backup
-set backup_file=%~1
+rem Function to get file size category and adjust settings
+:get_file_settings
+set file_path=%~1
+for %%f in ("%file_path%") do set file_size=%%~zf
+
+rem Adjust settings based on file size
+if !file_size! gtr 10737418240 (
+    rem Files larger than 10GB - use large chunk settings
+    set CHUNK_SIZE=8388608
+    set WORKERS=4
+    set TIMEOUT=12h
+    call :log "Large file detected (>10GB) - using large transfer settings"
+) else if !file_size! gtr 1073741824 (
+    rem Files larger than 1GB - use medium settings
+    set CHUNK_SIZE=4194304
+    set WORKERS=3
+    set TIMEOUT=6h
+    call :log "Medium file detected (>1GB) - using medium transfer settings"
+) else (
+    rem Small files - use standard settings
+    set CHUNK_SIZE=2097152
+    set WORKERS=2
+    set TIMEOUT=2h
+    call :log "Small file detected (<1GB) - using standard transfer settings"
+)
+
+exit /b 0
+
+rem Function to transfer file with retries
+:transfer_file
+set file_path=%~1
 set attempt=1
 
 :retry_transfer
 call :log "Transfer attempt !attempt! for %~nx1"
 
-jdc.exe -file "%backup_file%" ^
+rem Get optimal settings for this file size
+call :get_file_settings "%file_path%"
+
+jdc.exe -file "%file_path%" ^
         -connect %MAIN_OFFICE% ^
         -chunk !CHUNK_SIZE! ^
         -buffer 524288 ^
         -workers !WORKERS! ^
         -adaptive ^
         -verify=true ^
-        -timeout 8h ^
+        -timeout !TIMEOUT! ^
         -retries 15 ^
         -min-delay 5ms ^
         -max-delay !MAX_DELAY! ^
@@ -139,7 +184,7 @@ if !errorlevel! equ 0 (
     set /a attempt+=1
     
     if !attempt! leq %MAX_ATTEMPTS% (
-        set /a wait_time=!attempt! * 60
+        set /a wait_time=!attempt! * 90
         call :log "Waiting !wait_time! seconds before retry..."
         timeout /t !wait_time! /nobreak >nul
         goto :retry_transfer
@@ -149,39 +194,47 @@ if !errorlevel! equ 0 (
 call :log "ERROR: All %MAX_ATTEMPTS% attempts failed for %~nx1"
 exit /b 1
 
-rem Function to check if backup file is good
-:check_backup
-set backup_file=%~1
+rem Function to validate file before transfer
+:validate_file
+set file_path=%~1
 
-call :log "Checking backup file: %~nx1"
+call :log "Validating file: %~nx1"
 
 rem Check if file exists and isn't empty
-if not exist "%backup_file%" (
-    call :log "ERROR: Backup file not found: %backup_file%"
+if not exist "%file_path%" (
+    call :log "ERROR: File not found: %file_path%"
     exit /b 1
 )
 
-rem Check file size (should be at least 1MB)
-for %%f in ("%backup_file%") do set file_size=%%~zf
-if !file_size! lss 1048576 (
-    call :log "WARNING: Backup file seems very small: !file_size! bytes"
+rem Check file size (should be at least 1KB)
+for %%f in ("%file_path%") do set file_size=%%~zf
+if !file_size! lss 1024 (
+    call :log "WARNING: File seems very small: !file_size! bytes"
 )
 
-rem Test zip file if it's a zip
-echo %backup_file% | find /i ".zip" >nul
+rem Test archive files for corruption
+echo %file_path% | find /i ".zip" >nul
 if !errorlevel! equ 0 (
-    "C:\Program Files\7-Zip\7z.exe" t "%backup_file%" >nul 2>&1
+    powershell -command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::OpenRead('%file_path%').Dispose(); exit 0 } catch { exit 1 }"
     if !errorlevel! neq 0 (
-        call :log "ERROR: Backup file appears to be corrupted"
+        call :log "ERROR: ZIP file appears to be corrupted"
         exit /b 1
     )
 )
 
-call :log "Backup file looks good"
+echo %file_path% | find /i ".rar" >nul
+if !errorlevel! equ 0 (
+    "C:\Program Files\WinRAR\WinRAR.exe" t "%file_path%" >nul 2>&1
+    if !errorlevel! neq 0 (
+        call :log "WARNING: Could not verify RAR file (WinRAR not found or file corrupted)"
+    )
+)
+
+call :log "File validation passed"
 exit /b 0
 
 rem Main program starts here
-call :log "=== Branch Office Backup Transfer Started ==="
+call :log "=== Branch Office File Transfer Started ==="
 call :log "Branch: %BRANCH_NAME%"
 call :log "Date: %TODAY%"
 
@@ -189,42 +242,57 @@ rem Clean up old temporary files
 del /q "%TEMP%\*.justdatacopier.state" 2>nul
 
 rem Test internet connection and set optimal settings
-call :test_internet
+call :test_connection
 if !errorlevel! neq 0 (
-    call :log "Internet test failed, stopping transfer"
+    call :log "Connection test failed, stopping transfer"
     exit /b 1
 )
 
-rem Find backup files for today
-set "backup_files="
+rem Find files to transfer
 set file_count=0
-for %%f in ("%BACKUP_DIR%\*%TODAY%*.zip" "%BACKUP_DIR%\*%TODAY%*.7z") do (
-    set "backup_files=!backup_files! "%%f""
-    set /a file_count+=1
+set transfer_queue=
+
+rem Search for supported file types
+for %%e in (%EXTENSIONS%) do (
+    for %%f in ("%SOURCE_DIR%\%%e") do (
+        set transfer_queue=!transfer_queue! "%%f"
+        set /a file_count+=1
+    )
+)
+
+rem Also look for today's files specifically
+for %%e in (%EXTENSIONS%) do (
+    for %%f in ("%SOURCE_DIR%\*%TODAY%*%%e") do (
+        echo !transfer_queue! | find /i "%%f" >nul
+        if !errorlevel! neq 0 (
+            set transfer_queue=!transfer_queue! "%%f"
+            set /a file_count+=1
+        )
+    )
 )
 
 if !file_count! equ 0 (
-    call :log "No backup files found for today (%TODAY%)"
+    call :log "No files found to transfer"
     exit /b 0
 )
 
-call :log "Found !file_count! backup files to transfer"
+call :log "Found !file_count! files to transfer"
 
-rem Transfer each backup file
+rem Transfer each file
 set failed_count=0
 set success_count=0
 
-for %%f in (%backup_files%) do (
-    call :check_backup "%%~f"
+for %%f in (%transfer_queue%) do (
+    call :validate_file %%f
     if !errorlevel! equ 0 (
-        call :transfer_backup "%%~f"
+        call :transfer_file %%f
         if !errorlevel! equ 0 (
             set /a success_count+=1
         ) else (
             set /a failed_count+=1
         )
     ) else (
-        call :log "Skipping bad backup file: %%~nxf"
+        call :log "Skipping invalid file: %%~nxf"
         set /a failed_count+=1
     )
 )
@@ -247,31 +315,56 @@ if !failed_count! equ 0 (
 ### Simple Version (For Basic Use)
 ```batch
 @echo off
-rem simple-branch-backup.bat
-rem Basic version for simple setups
+rem simple-file-transfer.bat
+rem Basic version for transferring common file types
 
-set TODAY=%date:~10,4%%date:~4,2%%date:~7,2%
-set BACKUP_DIR=C:\Backup
+set SOURCE_DIR=C:\Files
 set MAIN_OFFICE=main-office.company.com:8000
+set EXTENSIONS=*.zip *.rar *.mp4 *.avi *.mkv *.mov
 
-echo Starting backup transfer for %TODAY%...
+echo Starting file transfer...
 
-for %%f in ("%BACKUP_DIR%\*%TODAY%*.zip") do (
-    echo Transferring %%~nxf...
-    
-    jdc.exe -file "%%f" ^
-            -connect %MAIN_OFFICE% ^
-            -chunk 2097152 ^
-            -workers 3 ^
-            -adaptive ^
-            -verify=true ^
-            -timeout 8h ^
-            -retries 15
-    
-    if !errorlevel! equ 0 (
-        echo SUCCESS: %%~nxf transferred
-    ) else (
-        echo FAILED: %%~nxf transfer failed
+rem Transfer ZIP and RAR files
+for %%e in (*.zip *.rar *.7z) do (
+    for %%f in ("%SOURCE_DIR%\%%e") do (
+        echo Transferring %%~nxf...
+        
+        jdc.exe -file "%%f" ^
+                -connect %MAIN_OFFICE% ^
+                -chunk 2097152 ^
+                -workers 3 ^
+                -adaptive ^
+                -verify=true ^
+                -timeout 6h ^
+                -retries 10
+        
+        if !errorlevel! equ 0 (
+            echo SUCCESS: %%~nxf transferred
+        ) else (
+            echo FAILED: %%~nxf transfer failed
+        )
+    )
+)
+
+rem Transfer video files with settings optimized for large files
+for %%e in (*.mp4 *.avi *.mkv *.mov *.wmv *.flv) do (
+    for %%f in ("%SOURCE_DIR%\%%e") do (
+        echo Transferring video: %%~nxf...
+        
+        jdc.exe -file "%%f" ^
+                -connect %MAIN_OFFICE% ^
+                -chunk 8388608 ^
+                -workers 2 ^
+                -adaptive ^
+                -verify=true ^
+                -timeout 12h ^
+                -retries 8
+        
+        if !errorlevel! equ 0 (
+            echo SUCCESS: %%~nxf transferred
+        ) else (
+            echo FAILED: %%~nxf transfer failed
+        )
     )
 )
 
@@ -279,31 +372,37 @@ echo Transfer batch complete
 pause
 ```
 
-## � Monitoring Your Transfers
+## 📊 Monitoring Your File Transfers
 
-### Check if Branch Offices are Sending Backups
+### Check if Branch Offices are Sending Files
 ```batch
 @echo off
 rem monitor-branch-transfers.bat
-rem Run this at main office to check if branches are sending backups
+rem Run this at main office to check if branches are sending files
 
-set BRANCH_BACKUP_DIR=D:\BranchBackups
+set BRANCH_FILES_DIR=D:\BranchFiles
 set TODAY=%date:~10,4%%date:~4,2%%date:~7,2%
 set EXPECTED_BRANCHES=Branch1 Branch2 Branch3 Branch4
 
-echo Checking branch backups for %TODAY%...
+echo Checking branch file transfers for %TODAY%...
 echo.
 
 for %%b in (%EXPECTED_BRANCHES%) do (
-    set "found_backup="
-    for %%f in ("%BRANCH_BACKUP_DIR%\%%b*%TODAY%*.*") do set "found_backup=1"
+    set "found_files="
     
-    if defined found_backup (
-        echo ✓ %%b: Backup received
-    ) else (
-        echo ✗ %%b: No backup found
-        rem You could send an email alert here
+    rem Check for any file types from this branch today
+    for %%f in ("%BRANCH_FILES_DIR%\%%b*%TODAY%*.*" "%BRANCH_FILES_DIR%\*%%b*.*") do (
+        set "found_files=1"
+        goto :found_%%b
     )
+    
+    echo ✗ %%b: No files received today
+    goto :next_%%b
+    
+    :found_%%b
+    echo ✓ %%b: Files received
+    
+    :next_%%b
 )
 
 echo.
@@ -311,44 +410,64 @@ echo Check complete
 pause
 ```
 
-## 📈 Making It Work Better
+## 📈 File Type Specific Optimizations
 
-### Auto-Adjust Based on Internet Speed
+### Optimized Settings by File Type
+
+| File Type | Chunk Size | Workers | Timeout | Notes |
+|-----------|------------|---------|---------|--------|
+| **ZIP/RAR Archives** | 4MB | 3 | 6h | Good compression ratio, medium priority |
+| **Video Files (MP4/AVI)** | 8MB | 2 | 12h | Large files, already compressed |
+| **High-Res Videos (4K)** | 16MB | 2 | 24h | Very large files, stable connection needed |
+| **Small Media Files** | 2MB | 4 | 2h | Quick transfers, multiple connections |
+
+### Auto-File-Type Detection Script
 ```batch
-rem Add this to your transfer script to auto-adjust settings
+rem Add this to your transfer script for automatic optimization
 
-rem Quick speed test (downloads a small file)
-powershell -command "Measure-Command { Invoke-WebRequest -Uri 'http://speedtest.ftp.otenet.gr/files/test1Mb.db' -OutFile '%TEMP%\speedtest.tmp' }" > "%TEMP%\speed_result.txt"
+:get_optimal_settings
+set file_path=%~1
+set file_ext=%~x1
 
-rem Read the result and adjust settings
-rem (This is simplified - you'd parse the actual time)
-if exist "%TEMP%\speedtest.tmp" (
-    for %%f in ("%TEMP%\speedtest.tmp") do set test_size=%%~zf
-    if !test_size! gtr 500000 (
-        rem Fast connection
-        set CHUNK_SIZE=4194304
-        set WORKERS=4
-    ) else (
-        rem Slow connection  
-        set CHUNK_SIZE=1048576
-        set WORKERS=2
-    )
-    del "%TEMP%\speedtest.tmp"
+rem Set defaults
+set CHUNK_SIZE=2097152
+set WORKERS=3
+set TIMEOUT=6h
+
+rem Optimize based on file extension
+if /i "%file_ext%"==".mp4" set CHUNK_SIZE=8388608 & set WORKERS=2 & set TIMEOUT=12h
+if /i "%file_ext%"==".avi" set CHUNK_SIZE=8388608 & set WORKERS=2 & set TIMEOUT=12h
+if /i "%file_ext%"==".mkv" set CHUNK_SIZE=8388608 & set WORKERS=2 & set TIMEOUT=12h
+if /i "%file_ext%"==".mov" set CHUNK_SIZE=8388608 & set WORKERS=2 & set TIMEOUT=12h
+if /i "%file_ext%"==".wmv" set CHUNK_SIZE=8388608 & set WORKERS=2 & set TIMEOUT=12h
+
+if /i "%file_ext%"==".zip" set CHUNK_SIZE=4194304 & set WORKERS=3 & set TIMEOUT=6h
+if /i "%file_ext%"==".rar" set CHUNK_SIZE=4194304 & set WORKERS=3 & set TIMEOUT=6h
+if /i "%file_ext%"==".7z" set CHUNK_SIZE=4194304 & set WORKERS=3 & set TIMEOUT=6h
+
+rem Check file size for fine-tuning
+for %%f in ("%file_path%") do set file_size=%%~zf
+if !file_size! gtr 5368709120 (
+    rem Files > 5GB get bigger chunks and longer timeout
+    set CHUNK_SIZE=16777216
+    set TIMEOUT=24h
 )
+
+exit /b 0
 ```
 
 ## 🚨 Common Problems
 
 ### Internet Connection Keeps Dropping
 ```cmd
-rem Use these settings for really bad internet
-jdc.exe -file backup.zip ^
+rem Use these settings for really bad internet with large video files
+jdc.exe -file big_video.mp4 ^
         -connect server:8000 ^
         -chunk 1048576 ^
-        -workers 2 ^
+        -workers 1 ^
         -adaptive ^
         -retries 25 ^
-        -timeout 12h
+        -timeout 24h
 ```
 
 ### Transfers are Too Slow
@@ -356,35 +475,41 @@ jdc.exe -file backup.zip ^
 rem Check if other programs are using your internet
 netstat -b
 
-rem Try reducing workers
-jdc.exe -file backup.zip -connect server:8000 -workers 2
+rem Try reducing workers for video files
+jdc.exe -file large_video.mp4 -connect server:8000 -workers 1
 
-rem Or try during off-peak hours (like 2 AM)
+rem Or schedule transfers during off-peak hours (like 2 AM)
+rem Use Task Scheduler for this
 ```
 
 ### Files Keep Getting Corrupted
 ```cmd
-rem Always verify your backups first
-"C:\Program Files\7-Zip\7z.exe" t backup.zip
+rem Always verify your files first
+"C:\Program Files\7-Zip\7z.exe" t archive.zip
+"C:\Program Files\WinRAR\WinRAR.exe" t archive.rar
+
+rem For video files, check if they play properly
+rem Use MediaInfo tool: mediainfo.exe video.mp4
 
 rem Use smaller chunks for bad connections
-jdc.exe -file backup.zip -connect server:8000 -chunk 524288
+jdc.exe -file large_video.mp4 -connect server:8000 -chunk 2097152
 ```
 
 ## 🔐 Security for Internet Transfers
 
 ### Use VPN When Possible
 ```batch
-rem Check if VPN is connected before transferring sensitive data
-ping vpn-gateway.company.com >nul 2>&1
+rem Check if VPN is connected before transferring sensitive files
+ping internal-vpn.company.com >nul 2>&1
 if errorlevel 1 (
     echo VPN not connected! Connect VPN first for security.
+    echo Connect to company VPN and try again.
     pause
     exit /b 1
 )
 
 rem Then do your transfer to internal address
-jdc.exe -file backup.zip -connect internal-backup.company.local:8000
+jdc.exe -file sensitive_archive.zip -connect internal-fileserver.company.local:8000
 ```
 
 ## 📅 Schedule with Windows Task Scheduler
@@ -392,25 +517,39 @@ jdc.exe -file backup.zip -connect internal-backup.company.local:8000
 ### Setting Up Automatic Daily Transfers
 1. Open **Task Scheduler** (type it in Start menu)
 2. Click **Create Basic Task**
-3. Name it "Branch Office Backup Transfer"
+3. Name it "Branch Office File Transfer"
 4. Set trigger to **Daily** at **2:00 AM** (when internet is usually less busy)
-5. Set action to **Start a program**: `C:\Scripts\branch-backup-transfer.bat`
+5. Set action to **Start a program**: `C:\Scripts\branch-file-transfer.bat`
 6. Check **Run whether user is logged on or not**
 7. Check **Run with highest privileges**
 
+### Multiple Transfer Schedule
+```batch
+rem Create separate tasks for different file types
+
+rem Task 1: Small files (ZIP/RAR) - Daily at 1:00 AM
+rem C:\Scripts\transfer-archives.bat
+
+rem Task 2: Video files - Daily at 2:00 AM  
+rem C:\Scripts\transfer-videos.bat
+
+rem Task 3: Weekly large file cleanup - Sunday at 3:00 AM
+rem C:\Scripts\cleanup-transferred-files.bat
+```
+
 ### Advanced PowerShell Version
 ```powershell
-# branch-backup-transfer.ps1
-# More advanced version with better error handling
+# branch-file-transfer.ps1
+# Advanced file transfer with intelligent file type handling
 
 param(
-    [string]$BackupDir = "C:\Backup",
+    [string]$SourceDir = "C:\Files",
     [string]$MainOffice = "main-office.company.com:8000",
-    [int]$MaxRetries = 3
+    [int]$MaxRetries = 3,
+    [string[]]$FileTypes = @("*.zip", "*.rar", "*.7z", "*.mp4", "*.avi", "*.mkv", "*.mov", "*.wmv")
 )
 
-$Today = Get-Date -Format "yyyyMMdd"
-$LogFile = "C:\Logs\branch-backup-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+$LogFile = "C:\Logs\branch-file-transfer-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
 
 function Write-Log($Message) {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -421,70 +560,172 @@ function Write-Log($Message) {
 
 function Test-InternetConnection {
     Write-Log "Testing connection to main office..."
-    $ping = Test-Connection -ComputerName "main-office.company.com" -Count 3 -Quiet
-    if (-not $ping) {
-        Write-Log "ERROR: Cannot reach main office"
+    try {
+        $ping = Test-NetConnection -ComputerName "main-office.company.com" -Port 8000 -InformationLevel Quiet
+        if ($ping) {
+            Write-Log "Connection test passed"
+            return $true
+        } else {
+            Write-Log "ERROR: Cannot reach main office on port 8000"
+            return $false
+        }
+    } catch {
+        Write-Log "ERROR: Connection test failed - $($_.Exception.Message)"
         return $false
     }
-    Write-Log "Connection test passed"
-    return $true
 }
 
-function Transfer-Backup($FilePath) {
+function Get-OptimalSettings($FilePath) {
+    $fileInfo = Get-Item $FilePath
+    $fileSize = $fileInfo.Length
+    $extension = $fileInfo.Extension.ToLower()
+    
+    # Default settings
+    $settings = @{
+        ChunkSize = 2097152
+        Workers = 3
+        Timeout = "6h"
+    }
+    
+    # Optimize based on file type
+    switch ($extension) {
+        {$_ -in @(".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm")} {
+            $settings.ChunkSize = 8388608
+            $settings.Workers = 2
+            $settings.Timeout = "12h"
+            Write-Log "Video file detected - using video optimized settings"
+        }
+        {$_ -in @(".zip", ".rar", ".7z")} {
+            $settings.ChunkSize = 4194304
+            $settings.Workers = 3
+            $settings.Timeout = "6h"
+            Write-Log "Archive file detected - using archive optimized settings"
+        }
+    }
+    
+    # Adjust for file size
+    if ($fileSize -gt 5GB) {
+        $settings.ChunkSize = 16777216
+        $settings.Timeout = "24h"
+        $settings.Workers = 2
+        Write-Log "Large file (>5GB) detected - using large file settings"
+    } elseif ($fileSize -gt 1GB) {
+        $settings.ChunkSize = 8388608
+        $settings.Timeout = "12h"
+        Write-Log "Medium file (>1GB) detected - using medium file settings"
+    }
+    
+    return $settings
+}
+
+function Transfer-File($FilePath) {
     $fileName = Split-Path $FilePath -Leaf
-    Write-Log "Starting transfer: $fileName"
+    Write-Log "Starting transfer: $fileName ($(([math]::Round((Get-Item $FilePath).Length/1MB, 2))) MB)"
+    
+    $settings = Get-OptimalSettings $FilePath
     
     $args = @(
         "-file", $FilePath,
         "-connect", $MainOffice,
-        "-chunk", "2097152",
-        "-workers", "3",
+        "-chunk", $settings.ChunkSize,
+        "-workers", $settings.Workers,
         "-adaptive",
         "-verify=true",
-        "-timeout", "8h",
-        "-retries", "15"
+        "-timeout", $settings.Timeout,
+        "-retries", "15",
+        "-log-level", "info"
     )
     
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     $process = Start-Process -FilePath "jdc.exe" -ArgumentList $args -Wait -PassThru -NoNewWindow
+    $stopwatch.Stop()
     
     if ($process.ExitCode -eq 0) {
-        Write-Log "SUCCESS: $fileName"
+        $speed = [math]::Round(((Get-Item $FilePath).Length / $stopwatch.Elapsed.TotalSeconds) / 1MB, 2)
+        Write-Log "SUCCESS: $fileName transferred in $($stopwatch.Elapsed.ToString('hh\:mm\:ss')) at $speed MB/s"
         return $true
     } else {
-        Write-Log "FAILED: $fileName"
+        Write-Log "FAILED: $fileName (Exit code: $($process.ExitCode))"
         return $false
     }
 }
 
-# Main script
-Write-Log "=== Branch Office Backup Transfer Started ==="
+function Test-FileIntegrity($FilePath) {
+    $extension = [System.IO.Path]::GetExtension($FilePath).ToLower()
+    
+    switch ($extension) {
+        ".zip" {
+            try {
+                Add-Type -AssemblyName System.IO.Compression.FileSystem
+                $zip = [System.IO.Compression.ZipFile]::OpenRead($FilePath)
+                $zip.Dispose()
+                return $true
+            } catch {
+                Write-Log "WARNING: ZIP file integrity check failed for $(Split-Path $FilePath -Leaf)"
+                return $false
+            }
+        }
+        ".rar" {
+            if (Test-Path "C:\Program Files\WinRAR\WinRAR.exe") {
+                $result = & "C:\Program Files\WinRAR\WinRAR.exe" t $FilePath 2>$null
+                return $LASTEXITCODE -eq 0
+            } else {
+                Write-Log "WARNING: WinRAR not found, skipping RAR integrity check"
+                return $true
+            }
+        }
+        default {
+            # For video files and others, just check if file exists and has size
+            return (Test-Path $FilePath) -and ((Get-Item $FilePath).Length -gt 0)
+        }
+    }
+}
+
+# Main script execution
+Write-Log "=== Branch Office File Transfer Started ==="
 
 if (-not (Test-InternetConnection)) {
     Write-Log "Internet connection failed, aborting"
     exit 1
 }
 
-$backupFiles = Get-ChildItem -Path $BackupDir -Filter "*$Today*.zip"
+# Find files to transfer
+$allFiles = @()
+foreach ($fileType in $FileTypes) {
+    $files = Get-ChildItem -Path $SourceDir -Filter $fileType -File
+    $allFiles += $files
+}
 
-if ($backupFiles.Count -eq 0) {
-    Write-Log "No backup files found for today"
+if ($allFiles.Count -eq 0) {
+    Write-Log "No files found to transfer"
     exit 0
 }
+
+Write-Log "Found $($allFiles.Count) files to transfer"
 
 $successCount = 0
 $failCount = 0
 
-foreach ($file in $backupFiles) {
-    if (Transfer-Backup $file.FullName) {
-        $successCount++
+foreach ($file in $allFiles) {
+    Write-Log "Processing: $($file.Name)"
+    
+    if (Test-FileIntegrity $file.FullName) {
+        if (Transfer-File $file.FullName) {
+            $successCount++
+        } else {
+            $failCount++
+        }
     } else {
+        Write-Log "Skipping corrupted file: $($file.Name)"
         $failCount++
     }
 }
 
 Write-Log "=== Transfer Summary ==="
+Write-Log "Total files: $($allFiles.Count)"
 Write-Log "Successful: $successCount"
 Write-Log "Failed: $failCount"
+Write-Log "Success rate: $(if ($allFiles.Count -gt 0) { [math]::Round(($successCount / $allFiles.Count) * 100, 1) } else { 0 })%"
 
 if ($failCount -eq 0) {
     Write-Log "All transfers completed successfully"
@@ -495,392 +736,103 @@ if ($failCount -eq 0) {
 }
 ```
 
-This setup ensures your branch office backups get to the main office reliably, even over sometimes-flaky internet connections!
+## 🧹 Windows Maintenance & Cleanup
 
-## 📋 Complete Example Script
-
-### Branch Office Transfer Script
-```bash
-#!/bin/bash
-# branch-backup-transfer.sh
-
-set -euo pipefail
-
-# Configuration
-BRANCH_ID="$(hostname -s)"
-BACKUP_DIR="/backup"
-DATACENTER_SERVER="datacenter.company.com:8000"
-LOG_FILE="/var/log/branch-backup.log"
-DATE=$(date +%Y%m%d)
-MAX_RETRIES=3
-
-# Network testing
-SPEED_TEST_FILE="/tmp/speedtest.dat"
-PING_TARGET="datacenter.company.com"
-
-# Function to log with timestamp
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$BRANCH_ID] $1" | tee -a "$LOG_FILE"
-}
-
-# Function to test network conditions
-test_network() {
-    log "Testing network conditions..."
-    
-    # Test connectivity
-    if ! ping -c 3 "$PING_TARGET" >/dev/null 2>&1; then
-        log "ERROR: Cannot reach datacenter server"
-        return 1
-    fi
-    
-    # Get average ping time
-    avg_ping=$(ping -c 5 "$PING_TARGET" | tail -1 | awk -F '/' '{print $5}' | cut -d' ' -f1)
-    log "Average ping time: ${avg_ping}ms"
-    
-    # Determine optimal settings based on ping
-    if (( $(echo "$avg_ping > 100" | bc -l) )); then
-        export JDC_CHUNK_SIZE=1048576  # 1MB for high latency
-        export JDC_WORKERS=2
-        export JDC_MAX_DELAY=1000ms
-        log "High latency detected - using conservative settings"
-    elif (( $(echo "$avg_ping > 50" | bc -l) )); then
-        export JDC_CHUNK_SIZE=2097152  # 2MB for medium latency
-        export JDC_WORKERS=3
-        export JDC_MAX_DELAY=500ms
-        log "Medium latency detected - using balanced settings"
-    else
-        export JDC_CHUNK_SIZE=4194304  # 4MB for low latency
-        export JDC_WORKERS=4
-        export JDC_MAX_DELAY=200ms
-        log "Low latency detected - using aggressive settings"
-    fi
-}
-
-# Function to transfer backup with retry logic
-transfer_backup() {
-    local backup_file="$1"
-    local attempt=1
-    
-    while [[ $attempt -le $MAX_RETRIES ]]; do
-        log "Transfer attempt $attempt for $(basename "$backup_file")"
-        
-        if jdc -file "$backup_file" \
-               -connect "$DATACENTER_SERVER" \
-               -chunk "${JDC_CHUNK_SIZE:-2097152}" \
-               -buffer 524288 \
-               -workers "${JDC_WORKERS:-3}" \
-               -adaptive \
-               -verify=true \
-               -timeout 8h \
-               -retries 15 \
-               -min-delay 5ms \
-               -max-delay "${JDC_MAX_DELAY:-500ms}" \
-               -log-level info; then
-            log "SUCCESS: Transfer completed for $(basename "$backup_file")"
-            return 0
-        else
-            log "FAILED: Transfer attempt $attempt failed"
-            ((attempt++))
-            
-            if [[ $attempt -le $MAX_RETRIES ]]; then
-                sleep_time=$((attempt * 60))  # Progressive backoff
-                log "Waiting ${sleep_time}s before retry..."
-                sleep $sleep_time
-            fi
-        fi
-    done
-    
-    log "ERROR: All $MAX_RETRIES attempts failed for $(basename "$backup_file")"
-    return 1
-}
-
-# Function to cleanup old state files
-cleanup_state_files() {
-    log "Cleaning up old state files..."
-    find /tmp -name "*.justdatacopier.state" -mtime +7 -delete 2>/dev/null || true
-}
-
-# Function to validate backup before transfer
-validate_backup() {
-    local backup_file="$1"
-    
-    log "Validating backup file: $(basename "$backup_file")"
-    
-    # Check if file exists and is readable
-    if [[ ! -r "$backup_file" ]]; then
-        log "ERROR: Backup file not readable: $backup_file"
-        return 1
-    fi
-    
-    # Check file size (minimum 1MB)
-    local file_size=$(stat -c%s "$backup_file")
-    if [[ $file_size -lt 1048576 ]]; then
-        log "WARNING: Backup file unusually small: $file_size bytes"
-    fi
-    
-    # Test archive integrity if it's a compressed file
-    case "$backup_file" in
-        *.tar.gz|*.tgz)
-            if ! tar -tzf "$backup_file" >/dev/null 2>&1; then
-                log "ERROR: Backup archive integrity check failed"
-                return 1
-            fi
-            ;;
-        *.zip)
-            if ! unzip -t "$backup_file" >/dev/null 2>&1; then
-                log "ERROR: Backup archive integrity check failed"
-                return 1
-            fi
-            ;;
-    esac
-    
-    log "Backup validation: PASSED"
-    return 0
-}
-
-# Main execution
-main() {
-    log "=== Branch Office Backup Transfer Started ==="
-    log "Branch ID: $BRANCH_ID"
-    log "Date: $DATE"
-    
-    # Clean up old state files
-    cleanup_state_files
-    
-    # Test network conditions
-    if ! test_network; then
-        log "Network test failed, aborting transfer"
-        exit 1
-    fi
-    
-    # Find backup files
-    backup_files=$(find "$BACKUP_DIR" -name "*${DATE}*.tar.gz" -o -name "*${DATE}*.zip" | head -5)
-    
-    if [[ -z "$backup_files" ]]; then
-        log "No backup files found for date $DATE"
-        exit 0
-    fi
-    
-    # Transfer each backup file
-    failed_transfers=0
-    total_transfers=0
-    
-    for backup_file in $backup_files; do
-        ((total_transfers++))
-        
-        if validate_backup "$backup_file"; then
-            if ! transfer_backup "$backup_file"; then
-                ((failed_transfers++))
-            fi
-        else
-            log "Skipping invalid backup: $(basename "$backup_file")"
-            ((failed_transfers++))
-        fi
-    done
-    
-    # Summary
-    log "=== Transfer Summary ==="
-    log "Total files: $total_transfers"
-    log "Failed transfers: $failed_transfers"
-    log "Success rate: $(( (total_transfers - failed_transfers) * 100 / total_transfers ))%"
-    
-    if [[ $failed_transfers -eq 0 ]]; then
-        log "=== All transfers completed successfully ==="
-        exit 0
-    else
-        log "=== Transfer completed with failures ==="
-        exit 1
-    fi
-}
-
-main "$@"
-```
-
-### Windows Branch Office Script
+### Automatic Cleanup Script
 ```batch
 @echo off
-setlocal enabledelayedexpansion
+rem cleanup-transferred-files.bat
+rem Clean up successfully transferred files and old logs
 
-REM branch-backup-transfer.bat
-REM Configuration
-set BRANCH_ID=%COMPUTERNAME%
-set BACKUP_DIR=C:\Backup
-set DATACENTER_SERVER=datacenter.company.com:8000
-set LOG_FILE=C:\Logs\branch-backup.log
-set DATE=%date:~10,4%%date:~4,2%%date:~7,2%
+set SOURCE_DIR=C:\Files
+set LOG_DIR=C:\Logs
+set DAYS_TO_KEEP=7
+set MAX_LOG_SIZE=50MB
 
-echo [%date% %time%] [%BRANCH_ID%] === Branch Office Backup Transfer Started === >> "%LOG_FILE%"
+echo Starting cleanup for files older than %DAYS_TO_KEEP% days...
 
-REM Find backup files
-for %%f in ("%BACKUP_DIR%\*%DATE%*.zip") do (
-    echo [%date% %time%] [%BRANCH_ID%] Starting transfer of %%~nxf >> "%LOG_FILE%"
-    
-    jdc.exe -file "%%f" ^
-            -connect %DATACENTER_SERVER% ^
-            -chunk 2097152 ^
-            -buffer 524288 ^
-            -workers 3 ^
-            -adaptive ^
-            -verify=true ^
-            -timeout 8h ^
-            -retries 15 ^
-            -min-delay 5ms ^
-            -max-delay 500ms ^
-            -log-level info
-    
-    if !errorlevel! equ 0 (
-        echo [%date% %time%] [%BRANCH_ID%] SUCCESS: Transfer completed for %%~nxf >> "%LOG_FILE%"
-    ) else (
-        echo [%date% %time%] [%BRANCH_ID%] ERROR: Transfer failed for %%~nxf >> "%LOG_FILE%"
+rem Clean up old log files
+echo Cleaning old log files...
+forfiles /p "%LOG_DIR%" /m "*.log" /d -%DAYS_TO_KEEP% /c "cmd /c del @path" 2>nul
+
+rem Archive large log files
+for %%f in ("%LOG_DIR%\*.log") do (
+    for /f %%s in ('powershell -command "(Get-Item '%%f').Length"') do (
+        if %%s gtr 52428800 (
+            echo Archiving large log file: %%~nxf
+            "C:\Program Files\7-Zip\7z.exe" a "%LOG_DIR%\%%~nf_%date:~10,4%%date:~4,2%%date:~7,2%.zip" "%%f"
+            del "%%f"
+        )
     )
 )
 
-echo [%date% %time%] [%BRANCH_ID%] === Transfer batch completed === >> "%LOG_FILE%"
+rem Clean up old state files
+del /q "%TEMP%\*.justdatacopier.state" 2>nul
+
+echo Cleanup complete
 ```
 
-## 🔍 Monitoring & Alerting
+### Disk Space Monitoring
+```batch
+@echo off
+rem check-disk-space.bat
+rem Monitor disk space and alert if running low
 
-### Transfer Status Monitoring
-```bash
-#!/bin/bash
-# monitor-branch-transfers.sh
+set DRIVE=C:
+set MIN_FREE_GB=10
 
-# Configuration
-BRANCHES=("branch1" "branch2" "branch3" "branch4")
-ALERT_EMAIL="admin@company.com"
-BACKUP_DIR="/datacenter/branch-backups"
-DATE=$(date +%Y%m%d)
+for /f "tokens=3" %%a in ('dir /-c %DRIVE% ^| find "bytes free"') do set FREE_BYTES=%%a
+set /a FREE_GB=%FREE_BYTES% / 1073741824
 
-# Check each branch backup
-for branch in "${BRANCHES[@]}"; do
-    expected_backup="${BACKUP_DIR}/${branch}_backup_${DATE}.tar.gz"
-    
-    if [[ -f "$expected_backup" ]]; then
-        # Check if file was modified in last 24 hours
-        if [[ $(find "$expected_backup" -mtime -1 | wc -l) -eq 1 ]]; then
-            echo "✓ $branch: Backup received"
-        else
-            echo "⚠ $branch: Backup file old"
-            echo "$branch backup is outdated" | mail -s "Branch Backup Alert" "$ALERT_EMAIL"
-        fi
-    else
-        echo "✗ $branch: No backup received"
-        echo "$branch backup missing for $DATE" | mail -s "Branch Backup Missing" "$ALERT_EMAIL"
-    fi
-done
+if %FREE_GB% lss %MIN_FREE_GB% (
+    echo WARNING: Low disk space on %DRIVE% - Only %FREE_GB%GB free
+    echo Consider cleaning up old files or moving them to archive storage
+    pause
+) else (
+    echo Disk space OK: %FREE_GB%GB free on %DRIVE%
+)
 ```
 
-## 📈 Performance Optimization
+### Windows Performance Optimization
+```batch
+@echo off
+rem optimize-for-transfers.bat
+rem Temporarily optimize Windows settings for large file transfers
 
-### Bandwidth-Based Configuration
-```bash
-# Function to auto-configure based on available bandwidth
-configure_for_bandwidth() {
-    local bandwidth_mbps="$1"
-    
-    if [[ $bandwidth_mbps -ge 100 ]]; then
-        # High bandwidth (100+ Mbps)
-        echo "chunk=4194304 workers=4 buffer=1048576"
-    elif [[ $bandwidth_mbps -ge 50 ]]; then
-        # Medium bandwidth (50-100 Mbps)
-        echo "chunk=2097152 workers=3 buffer=524288"
-    else
-        # Low bandwidth (<50 Mbps)
-        echo "chunk=1048576 workers=2 buffer=262144"
-    fi
-}
+echo Optimizing Windows for file transfers...
 
-# Usage in transfer script
-bandwidth=$(speedtest-cli --simple | grep Download | awk '{print $2}')
-config=$(configure_for_bandwidth "${bandwidth%.*}")
-eval "jdc -file backup.tar.gz -connect server:8000 -adaptive $config"
+rem Disable Windows Update during transfers
+sc config wuauserv start= disabled
+sc stop wuauserv
+
+rem Set network adapter to high performance
+powershell -command "Get-NetAdapter | Set-NetAdapterAdvancedProperty -DisplayName 'Power Saving Mode' -DisplayValue 'Disabled'"
+
+rem Increase network buffer sizes
+netsh int tcp set global autotuninglevel=normal
+netsh int tcp set global chimney=enabled
+
+echo Optimization complete
+echo Remember to run restore-settings.bat after transfers complete
 ```
 
-## 🚨 Troubleshooting Common Issues
+### Restore Normal Settings
+```batch
+@echo off
+rem restore-settings.bat
+rem Restore normal Windows settings after transfers
 
-### Network Interruption Recovery
-```bash
-# Check for incomplete transfers
-find /tmp -name "*.justdatacopier.state" -exec ls -la {} \;
+echo Restoring normal Windows settings...
 
-# Resume interrupted transfer
-jdc -file /backup/branch_backup_20250705.tar.gz \
-    -connect datacenter.company.com:8000 \
-    -adaptive \
-    # Same parameters as original transfer
+rem Re-enable Windows Update
+sc config wuauserv start= auto
+sc start wuauserv
+
+rem Reset network settings to defaults
+netsh int tcp set global autotuninglevel=normal
+netsh int tcp set global chimney=disabled
+
+echo Settings restored to normal
 ```
 
-### Bandwidth Throttling Detection
-```bash
-# Monitor transfer speed and adjust
-tail -f /var/log/branch-backup.log | grep -i "transfer rate" | while read line; do
-    rate=$(echo "$line" | grep -o '[0-9.]* MB/s')
-    if (( $(echo "$rate < 5" | bc -l) )); then
-        echo "Low transfer rate detected: $rate"
-        # Consider reducing workers or chunk size
-    fi
-done
-```
-
-## 🔐 Security for WAN Transfers
-
-### VPN Configuration
-```bash
-# Ensure VPN is active before transfer
-if ! ip route | grep -q "10.0.0.0/8"; then
-    echo "VPN not connected, starting..."
-    systemctl start openvpn@company
-    sleep 10
-fi
-
-# Then proceed with transfer
-jdc -file backup.tar.gz -connect datacenter-internal.company.com:8000
-```
-
-### Certificate-based Authentication (Future Enhancement)
-```bash
-# Example of securing JDC with client certificates
-jdc -file backup.tar.gz \
-    -connect datacenter.company.com:8443 \
-    -cert /etc/ssl/certs/branch-client.crt \
-    -key /etc/ssl/private/branch-client.key \
-    -ca /etc/ssl/certs/company-ca.crt
-```
-
-## 📅 Scheduling & Automation
-
-### Systemd Timer (Linux)
-```ini
-# /etc/systemd/system/branch-backup-transfer.timer
-[Unit]
-Description=Branch Office Backup Transfer
-Requires=branch-backup-transfer.service
-
-[Timer]
-OnCalendar=daily
-RandomizedDelaySec=3600  # Random delay up to 1 hour
-
-[Install]
-WantedBy=timers.target
-```
-
-### Task Scheduler (Windows)
-```xml
-<!-- Import this XML into Windows Task Scheduler -->
-<Task xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <Triggers>
-    <CalendarTrigger>
-      <DaysOfWeek>Daily</DaysOfWeek>
-      <StartBoundary>2025-01-01T02:00:00</StartBoundary>
-      <RandomDelay>PT1H</RandomDelay>
-    </CalendarTrigger>
-  </Triggers>
-  <Actions>
-    <Exec>
-      <Command>C:\Scripts\branch-backup-transfer.bat</Command>
-    </Exec>
-  </Actions>
-</Task>
-```
-
-This configuration ensures reliable, adaptive backup transfers from branch offices over variable WAN connections with comprehensive monitoring and error handling.
+This complete Windows-focused setup provides everything needed for reliable branch office file transfers with proper maintenance and optimization.
