@@ -107,17 +107,17 @@ jdc -file ./file.dat -connect server:8000 -chunk 1048576 -adaptive
 - **Monitoring**: Comprehensive metrics and observability features
 - **Production Ready**: Graceful shutdown, signal handling, and resource management
 
-## � Examples & Use Cases
+## 📚 Examples & Use Cases
 
-For detailed real-world usage examples and optimal configurations, see the [examples directory](./examples/README.md):
+For detailed real-world usage examples and optimal configurations for Windows environments, see the [examples directory](./examples/README.md):
 
-- **[Database Backup Transfer](./examples/database-backup/README.md)** - Enterprise database backups (100GB-2TB)
-- **[Branch Office Backup](./examples/branch-office/README.md)** - Daily backups over WAN links
-- **[Cloud Migration](./examples/cloud-migration/README.md)** - Large-scale data migration to cloud providers
+- **[Database Backup Transfer](./examples/database-backup/README.md)** - Moving large database backups (100GB-2TB) between Windows servers
+- **[Branch Office Backup](./examples/branch-office/README.md)** - Daily backups over internet connections with Windows batch scripts  
+- **[Cloud Migration](./examples/cloud-migration/README.md)** - Large-scale data migration from Windows servers to cloud providers
 
-Each example includes complete scripts, optimal configurations, monitoring setup, and troubleshooting guides.
+Each example includes complete Windows batch files, PowerShell scripts, optimal configurations, monitoring setup, and troubleshooting guides written in easy-to-understand language.
 
-## �📊 Monitoring
+## 📊 Monitoring
 
 ### Logging Features
 - **JSON Format**: Enterprise-compatible structured logging
