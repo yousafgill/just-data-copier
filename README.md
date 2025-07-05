@@ -27,7 +27,7 @@ JustDataCopier is a high-performance, enterprise-grade network file transfer uti
 - **Modular Design**: Clean package structure with dependency injection
 - **Binary Protocol**: Efficient communication with hash algorithm negotiation
 - **Enterprise Quality**: Structured error types, security best practices, and operational excellence
-- **Scalability**: Optimized for files from MB to TB+ with constant memory usage
+- **Scalability**: Optimized for files from MB to TB+ with optimized memory usage
 
 ## 🚀 Quick Start
 
