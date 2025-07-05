@@ -3,226 +3,127 @@
 [![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
 [![Tests](https://img.shields.io/badge/Tests-Passing-green.svg)](https://github.com/yousafgill/just-data-copier)
 
-JustDataCopier is a high-performance, enterprise-grade network file transfer utility designed for mission-critical environments. Built with Go 1.21+, it efficiently transfers files of any size (from MB to TB) across network connections with features like intelligent hash algorithms, adaptive network optimization, structured logging, and enterprise-level security.
+JustDataCopier is a high-performance, enterprise-grade network file transfer utility designed for mission-critical environments. Built with Go 1.21+, it efficiently transfers files from MB to TB with intelligent hash algorithms, adaptive network optimization, and enterprise-level security.
 
-## 🚀 Features
+## 🚀 Key Features
 
-### Core Functionality
-- **High-Performance Transfer**: Optimized for large file transfers with configurable chunk sizes up to 2TB+
-- **Parallel Processing**: Multi-threaded transfers with configurable worker count and dynamic optimization
-- **Smart Hash Verification**: Automatic algorithm selection (MD5 for <50GB, BLAKE2b for ≥50GB) for optimal speed and security
-- **Intelligent Compression**: Gzip compression with automatic file type detection and optimized compression levels
-- **Resume Capability**: Transfer state management for resuming interrupted transfers with chunk-level precision
-- **Network Adaptation**: Real-time network condition monitoring with automatic performance tuning
+- **High-Performance Transfer**: Optimized parallel processing with configurable chunks up to 2TB+
+- **Smart Hash Verification**: Auto-selects MD5 (<50GB) or BLAKE2b (≥50GB) for 35% faster processing
+- **Intelligent Compression**: Automatic file type detection with optimized compression levels
+- **Resume Capability**: Chunk-level precision resume with integrity verification
+- **Network Adaptation**: Real-time profiling with automatic performance tuning
+- **Enterprise Security**: Path validation, input sanitization, and structured error handling
+- **Structured Logging**: JSON-based logging with session tracking and privacy focus
+- **Modular Architecture**: Clean interfaces with dependency injection and comprehensive testing
 
-### Enterprise Features
-- **Structured Logging**: JSON-based logging with session tracking, network metrics, and security-focused output
-- **Modular Architecture**: Clean package structure with dependency injection and interface-based design
-- **Advanced Error Handling**: Comprehensive error categorization with NetworkError, FileSystemError, ProtocolError types
-- **Configuration Management**: Centralized configuration with validation and sensible defaults
-- **Security Enhancement**: Path validation, input sanitization, and directory traversal protection
-- **Monitoring & Observability**: Real-time progress reporting, transfer statistics, and performance metrics
-- **Graceful Operations**: Signal handling for clean application termination and resource cleanup
+## 📋 Requirements & Architecture
 
-### Performance Optimizations
-- **Automatic Network Profiling**: Real-time RTT measurement, bandwidth estimation, and packet loss detection
-- **Adaptive Chunking**: Dynamic chunk size adjustment based on network performance and file characteristics
-- **TCP Optimization**: Socket-level optimizations including TCP_NODELAY and buffer tuning
-- **Memory Efficiency**: Streaming operations with configurable buffer management for optimal memory usage
-- **Quality Assessment**: Automatic network quality rating (fair/good/excellent) with adaptive responses
-
-### Hash Algorithm Intelligence
-- **Size-Based Selection**: MD5 for files <50GB, BLAKE2b for files ≥50GB (35% faster than SHA-256)
-- **Protocol Negotiation**: Automatic algorithm exchange between client and server
-- **Backward Compatibility**: Seamless operation with legacy systems
-
-## 📋 Requirements
-
-- Go 1.21 or higher
+### System Requirements
+- Go 1.21+ for building from source
 - Network connectivity between client and server
 - Adequate disk space for file transfers
 
-## 🏗️ Architecture
+### Architecture Overview
+- **Modular Design**: Clean package structure with dependency injection
+- **Binary Protocol**: Efficient communication with hash algorithm negotiation
+- **Enterprise Quality**: Structured error types, security best practices, and operational excellence
+- **Scalability**: Optimized for files from MB to TB+ with optimized memory usage
 
-JustDataCopier features a modern, modular architecture with the following components:
+## 🚀 Quick Start
 
-### Package Structure
-- **Client/Server**: Separate client and server logic with clean interfaces
-- **Protocol**: Binary protocol with hash algorithm negotiation
-- **Network**: Adaptive network optimization and performance monitoring
-- **Filesystem**: File operations with streaming hash calculation
-- **Logging**: Structured logging with session tracking and security focus
-- **Compression**: Smart compression with file type detection
-- **Configuration**: Centralized configuration management with validation
-- **Error Handling**: Structured error types with proper categorization
-
-### Enterprise-Grade Features
-- **Dependency Injection**: Clean dependencies between modules for testability
-- **Interface-Based Design**: Maintainable and extensible code structure
-- **Context Support**: Context-aware operations throughout the application
-- **Testing Framework**: Comprehensive unit tests with testify integration
-- **Production Ready**: Enterprise operational characteristics with monitoring
-
-## Usage
-
-JDC operates in two modes: server (receiver) and client (sender). The executable name is `jdc` (or `jdc.exe` on Windows).
-
-### Server Mode
-
-Start the server to receive files:
-
+### Server Mode (Receiver)
 ```bash
 jdc -server -output ./destination_folder
-```
-
-By default, the server listens on all interfaces (0.0.0.0) port 8000. You can specify a different listening address:
-
-```bash
 jdc -server -listen 192.168.1.10:9000 -output ./destination_folder
 ```
 
-### Client Mode
-
-Send a file to a server:
-
+### Client Mode (Sender)
 ```bash
 jdc -file ./my_large_file.dat -connect server_address:8000
-```
-
-For improved performance with text files, enable compression:
-
-```bash
 jdc -file ./large_log_file.txt -connect server_address:8000 -compress
 ```
 
 ### Common Options
+- `-compress`: Enable compression (optimized by file type)
+- `-chunk <bytes>`: Chunk size (default: 2MB)
+- `-buffer <bytes>`: Buffer size (default: 512KB)
+- `-workers <num>`: Concurrent workers (default: half CPU cores)
+- `-adaptive`: Enable adaptive network optimization
+- `-timeout <duration>`: Operation timeout (default: 2m)
 
-- `-compress`: Enable on-the-fly compression (optimized by file type)
-- `-chunk <bytes>`: Set chunk size in bytes (default: 2MB)
-- `-buffer <bytes>`: Set buffer size in bytes (default: 512KB)
-- `-workers <num>`: Set number of concurrent workers (default: half of CPU cores)
-- `-verify <bool>`: Enable/disable file integrity verification (default: enabled)
-- `-adaptive`: Use adaptive delay based on network conditions (default: disabled)
-- `-progress <bool>`: Show/hide progress during transfer (default: enabled)
-- `-timeout <duration>`: Set operation timeout (default: 2m)
-- `-retries <num>`: Set number of retries for failed operations (default: 5)
-
-## 🔐 Security & Reliability
+## 🔐 Security & Performance
 
 ### Security Features
-- **Path Validation**: Comprehensive directory traversal protection
-- **Input Sanitization**: Safe handling of all user inputs and file paths
-- **Privacy-Focused Logging**: No sensitive file paths or hash values in logs
-- **Resource Management**: Bounded resource usage and proper cleanup
-- **File Permissions**: Appropriate file creation permissions and access controls
+- **Path Validation**: Directory traversal protection and input sanitization
+- **Privacy Logging**: No sensitive file paths or hash values in logs
+- **Structured Errors**: Categorized error types without sensitive details
+- **Resource Management**: Bounded usage and proper cleanup
 
-### Error Handling & Recovery
-- **Structured Error Types**: NetworkError, FileSystemError, ProtocolError, CompressionError, ValidationError
-- **Error Context**: Proper error wrapping with context preservation
-- **Graceful Degradation**: Robust error recovery mechanisms
-- **User-Friendly Messages**: Clear error communication without sensitive details
-- **Retry Logic**: Intelligent retry mechanisms for transient failures
+### Performance Optimization
 
-### Data Integrity
-- **Intelligent Hash Selection**: Automatic selection of optimal hash algorithms
-- **Streaming Verification**: Memory-efficient hash calculation for files of any size
-- **Protocol Integrity**: Built-in protocol validation and error detection
-- **Transfer Validation**: End-to-end verification of data integrity
-
-## ⚡ Performance Tuning
-
-### Hash Algorithm Optimization
-JustDataCopier automatically selects the optimal hash algorithm based on file size:
-
+#### Hash Algorithm Intelligence
 | File Size | Algorithm | Performance Benefit |
 |-----------|-----------|-------------------|
 | < 50GB | MD5 | Fastest for smaller files |
-| ≥ 50GB | BLAKE2b | 35% faster than SHA-256, cryptographically secure |
+| ≥ 50GB | BLAKE2b | 35% faster than SHA-256, secure |
 
-For a 2TB file, BLAKE2b reduces hash calculation time from ~60 minutes (SHA-256) to ~35 minutes while maintaining cryptographic security.
-
-### Network Optimization
-For optimal performance, adjust these parameters based on your network environment:
-
-- **Chunk Size**: Larger chunks (e.g., `-chunk 4194304` for 4MB) can improve performance on reliable networks with low latency
-- **Buffer Size**: Adjust buffer size with `-buffer` for different network conditions:
-  - Larger buffers (e.g., `-buffer 1048576` for 1MB) can help on high-bandwidth networks
-  - Smaller buffers may work better on congested networks
-- **Workers**: More workers (e.g., `-workers 8`) can improve throughput on high-bandwidth connections
-- **Delay Settings**: Fine-tune adaptive delay with `-min-delay` and `-max-delay` parameters
-- **Compression**: Enable compression (`-compress`) for text files, logs, and other compressible data
-
-### Examples for Different Network Types:
-
-#### High-speed LAN (1Gbps+):
+#### Network Tuning Examples
 ```bash
-jdc -file ./large_file.dat -connect server:8000 -chunk 8388608 -buffer 1048576 -workers 8
+# High-speed LAN (1Gbps+)
+jdc -file ./file.dat -connect server:8000 -chunk 8388608 -workers 8
+
+# Internet (100Mbps+)  
+jdc -file ./file.dat -connect server:8000 -chunk 4194304 -workers 4 -adaptive
+
+# High-latency Network
+jdc -file ./file.dat -connect server:8000 -chunk 1048576 -adaptive
 ```
 
-#### Internet Connection (100Mbps+):
-```bash
-jdc -file ./large_file.dat -connect server:8000 -chunk 4194304 -buffer 524288 -workers 4 -adaptive
-```
+## 🔧 Advanced Capabilities
 
-#### Unstable or High-latency Network:
-```bash
-jdc -file ./large_file.dat -connect server:8000 -chunk 1048576 -buffer 262144 -adaptive -min-delay 10ms -max-delay 200ms
-```
+### Intelligent Features
+- **Hash Selection**: Automatic MD5/BLAKE2b selection based on file size
+- **Network Adaptation**: Real-time RTT, bandwidth, and packet loss monitoring
+- **Smart Compression**: File type detection with adaptive compression levels
+- **Resume Support**: Chunk-level precision resume with integrity verification
 
-## 🔧 Advanced Features
+### Enterprise Monitoring
+- **Structured Logging**: JSON-based with session tracking and security focus
+- **Performance Metrics**: Real-time transfer statistics and network conditions
+- **Error Categorization**: Clear classification without sensitive information
+- **Operational Integration**: Compatible with enterprise monitoring systems
 
-### Intelligent Hash Algorithm Selection
-- **Automatic Selection**: MD5 for files <50GB, BLAKE2b for files ≥50GB
-- **Performance**: Up to 35% faster hash calculation for large files
-- **Memory Efficient**: Streaming calculation with configurable buffers
-
-### Enterprise Logging & Monitoring
-- **Session Tracking**: Unique session IDs for correlation across components
-- **Network Metrics**: Real-time RTT, bandwidth estimation, and packet loss monitoring
-- **Security-Focused**: No sensitive file paths or hash values in log output
-- **Quality Assessment**: Automatic network quality rating (fair/good/excellent)
-
-### Network Profiling & Adaptation
-- **Continuous Monitoring**: RTT measurement, bandwidth estimation, packet loss detection
-- **Adaptive Delays**: Dynamic adjustment based on network performance
-- **Quality Rating**: Automatic classification with responsive tuning
-
-### Smart Compression & Resume
-- **File Type Detection**: Automatically identifies compressible vs pre-compressed content
-- **Adaptive Compression**: Optimized levels based on file characteristics
-- **Chunk-Level Resume**: Resume from exact point of interruption with integrity verification
-
-## 🏛️ Technical Architecture
-
-JustDataCopier implements a robust client-server architecture with:
+## 🏛️ Technical Implementation
 
 ### Core Technologies
-- **Go 1.21+**: Modern Go with performance improvements and structured logging
+- **Go 1.21+**: Modern performance with structured logging and modular design
 - **Binary Protocol**: Efficient communication with hash algorithm negotiation
-- **Modular Design**: 10+ focused packages with dependency injection
-- **Enterprise Quality**: Structured error types, security best practices, and operational excellence
+- **TCP Optimization**: Socket-level tuning for maximum throughput
+- **Streaming Operations**: Memory-efficient processing for any file size
 
-### Performance & Scalability
-- **File Size Support**: Optimized for files from MB to TB+ with constant memory usage
-- **Network Adaptability**: Intelligent handling of LAN, WAN, and congested networks
-- **Streaming Operations**: Memory-efficient processing regardless of file size
-- **TCP Optimization**: Socket-level tuning for maximum performance
+### Enterprise Quality
+- **Error Handling**: Structured types (NetworkError, FileSystemError, etc.)
+- **Security**: Input validation, path sanitization, and access control
+- **Monitoring**: Comprehensive metrics and observability features
+- **Production Ready**: Graceful shutdown, signal handling, and resource management
 
-## 📊 Monitoring & Observability
+## 📚 Examples & Use Cases
 
-JustDataCopier provides enterprise-grade logging and monitoring:
+For detailed real-world usage examples and optimal configurations for Windows environments, see the [examples directory](./examples/README.md):
 
-### Structured Logging
-- **JSON-Based**: Compatible with enterprise log management systems
-- **Session Tracking**: Unique session IDs for complete activity correlation
-- **Security Focus**: No sensitive file paths or hash values in output
-- **Performance Metrics**: Real-time transfer statistics and network conditions
+- **[Database Backup Transfer](./examples/database-backup/README.md)** - Moving large database backups (100GB-2TB) between Windows servers
+- **[Branch Office Backup](./examples/branch-office/README.md)** - Daily backups over internet connections with Windows batch scripts  
+- **[Cloud Migration](./examples/cloud-migration/README.md)** - Large-scale data migration from Windows servers to cloud providers
 
-### Operational Benefits
-- **Troubleshooting**: Clear error categorization for quick issue resolution
-- **Performance Analysis**: Historical data for optimization
-- **Enterprise Integration**: Compatible with monitoring and alerting systems
-- **Audit Trail**: Complete session tracking for compliance
+Each example includes complete Windows batch files, PowerShell scripts, optimal configurations, monitoring setup, and troubleshooting guides written in easy-to-understand language.
+
+## 📊 Monitoring
+
+### Logging Features
+- **JSON Format**: Enterprise-compatible structured logging
+- **Session Tracking**: Unique IDs for complete activity correlation
+- **Privacy Focus**: No sensitive paths or hash values in output
+- **Performance Data**: Real-time metrics and network conditions
 
 ## 📄 License and Disclaimer
 
