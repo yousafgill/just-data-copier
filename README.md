@@ -113,7 +113,6 @@ For detailed real-world usage examples and optimal configurations for Windows en
 
 - **[Database Backup Transfer](./examples/database-backup/README.md)** - Moving large database backups (100GB-2TB) between Windows servers
 - **[Branch Office Backup](./examples/branch-office/README.md)** - Daily backups over internet connections with Windows batch scripts  
-- **[Cloud Migration](./examples/cloud-migration/README.md)** - Large-scale data migration from Windows servers to cloud providers
 
 Each example includes complete Windows batch files, PowerShell scripts, optimal configurations, monitoring setup, and troubleshooting guides written in easy-to-understand language.
 
