@@ -32,12 +32,9 @@ JustDataCopier is a high-performance, enterprise-grade network file transfer uti
 - **Quality Assessment**: Automatic network quality rating (fair/good/excellent) with adaptive responses
 
 ### Hash Algorithm Intelligence
-- **Size-Based Selection**: Automatic algorithm selection for optimal performance
-  - Files < 50GB: MD5 (fastest for smaller files)
-  - Files ≥ 50GB: BLAKE2b (35% faster than SHA-256, cryptographically secure)
+- **Size-Based Selection**: MD5 for files <50GB, BLAKE2b for files ≥50GB (35% faster than SHA-256)
 - **Protocol Negotiation**: Automatic algorithm exchange between client and server
 - **Backward Compatibility**: Seamless operation with legacy systems
-- **Performance Benefits**: Up to 35% faster hash calculation for large files while maintaining security
 
 ## 📋 Requirements
 
@@ -175,188 +172,85 @@ jdc -file ./large_file.dat -connect server:8000 -chunk 1048576 -buffer 262144 -a
 ## 🔧 Advanced Features
 
 ### Intelligent Hash Algorithm Selection
-
-JustDataCopier uses size-based hash algorithm selection to optimize performance:
-
-- **Automatic Selection**: Based on file size for optimal speed/security balance
-- **Protocol Negotiation**: Server determines algorithm and negotiates with client  
-- **Backward Compatibility**: Works seamlessly with legacy systems
+- **Automatic Selection**: MD5 for files <50GB, BLAKE2b for files ≥50GB
+- **Performance**: Up to 35% faster hash calculation for large files
 - **Memory Efficient**: Streaming calculation with configurable buffers
-- **Performance Optimized**: Up to 35% faster for large files while maintaining security
 
 ### Enterprise Logging & Monitoring
-
-#### Structured JSON Logging
 - **Session Tracking**: Unique session IDs for correlation across components
 - **Network Metrics**: Real-time RTT, bandwidth estimation, and packet loss monitoring
-- **Transfer Metrics**: Chunk-level progress, transfer rates, and throughput statistics
 - **Security-Focused**: No sensitive file paths or hash values in log output
 - **Quality Assessment**: Automatic network quality rating (fair/good/excellent)
 
-#### Log Information Includes
-- Session initialization and completion statistics
-- Network performance metrics and quality assessment
-- Transfer progress with chunk-level detail
-- Configuration parameters and optimization settings
-- Error categorization without sensitive information
-
-### Modular Architecture Benefits
-
-#### Code Quality
-- **Modular Design**: 10+ focused packages with single responsibilities
-- **Interface-Based**: Dependency injection for testability and maintainability  
-- **Comprehensive Testing**: Unit tests with testify framework
-- **Go Best Practices**: Modern Go 1.21+ with proper error handling
-
-#### Operational Excellence
-- **Production Ready**: Enterprise-grade operational characteristics
-- **Resource Management**: Proper cleanup and graceful shutdown
-- **Configuration**: Centralized config with validation and defaults
-- **Monitoring**: Full observability with metrics and structured logging
-
 ### Network Profiling & Adaptation
-
-JDC automatically profiles network conditions and adapts performance:
-- **Round-trip Time (RTT)**: Continuous measurement for latency optimization
-- **Bandwidth Estimation**: Real-time throughput calculation and adjustment
-- **Packet Loss Detection**: Monitoring with automatic quality assessment
+- **Continuous Monitoring**: RTT measurement, bandwidth estimation, packet loss detection
 - **Adaptive Delays**: Dynamic adjustment based on network performance
-- **Quality Rating**: Automatic classification (fair/good/excellent) with responsive tuning
+- **Quality Rating**: Automatic classification with responsive tuning
 
-### Smart Compression System
-
-The compression feature provides intelligent optimization:
+### Smart Compression & Resume
 - **File Type Detection**: Automatically identifies compressible vs pre-compressed content
-- **Adaptive Compression Levels**: Optimized levels based on file characteristics
-- **Performance Metrics**: Real-time compression ratio reporting
-- **Selective Compression**: Skips compression for already compressed formats (images, videos, archives)
-- **Text Optimization**: Enhanced compression for logs, configuration files, and text data
-
-### Adaptive Networking
-
-When enabled with `-adaptive`, monitors network performance and adjusts chunk delays for optimal throughput:
-- Automatically reduces send rate when network congestion is detected
-- Increases send rate when network conditions improve
-- Configurable with `-min-delay` and `-max-delay`
-- Provides real-time feedback about network conditions
-- Disabled by default for more predictable behavior
-
-### High-Performance Transfer Resume
-
-Advanced resume capability with enterprise features:
-- **Chunk-Level Precision**: Resume from exact point of interruption
-- **State Persistence**: Secure state file management with automatic cleanup
-- **Integrity Verification**: Validates resumed transfers with hash verification
-- **Session Recovery**: Maintains session context across resume operations
-- **Progress Preservation**: Continues progress tracking from interruption point
+- **Adaptive Compression**: Optimized levels based on file characteristics
+- **Chunk-Level Resume**: Resume from exact point of interruption with integrity verification
 
 ## 🏛️ Technical Architecture
 
-### Enterprise Client-Server Design
+JustDataCopier implements a robust client-server architecture with:
 
-JustDataCopier implements a robust client-server architecture optimized for enterprise environments:
+### Core Technologies
+- **Go 1.21+**: Modern Go with performance improvements and structured logging
+- **Binary Protocol**: Efficient communication with hash algorithm negotiation
+- **Modular Design**: 10+ focused packages with dependency injection
+- **Enterprise Quality**: Structured error types, security best practices, and operational excellence
 
-1. **Server Mode (Receiver)**:
-   - Multi-client connection handling with concurrent session management
-   - Intelligent hash algorithm selection based on file characteristics
-   - Chunk reassembly with integrity verification and progress tracking
-   - Security-focused file management with path validation
-   - Session-based logging with comprehensive metrics
-
-2. **Client Mode (Sender)**:
-   - Automatic network profiling and performance optimization
-   - Hash algorithm negotiation with server for optimal performance
-   - Parallel chunk transmission with adaptive network handling
-   - Real-time progress reporting and transfer statistics
-   - Resume capability with state persistence and recovery
-
-### Modern Implementation Standards
-
-#### Core Technologies
-- **Go 1.21+**: Modern Go with generics and performance improvements
-- **Structured Logging**: JSON-based logging with `log/slog` for enterprise monitoring
-- **Context-Driven**: Context-aware operations for proper cancellation and timeouts
-- **Interface Design**: Clean interfaces for testing, mocking, and extensibility
-- **Binary Protocol**: Efficient binary communication with hash algorithm negotiation
-
-#### Performance Engineering
-- **Streaming Operations**: Memory-efficient processing for files of any size
-- **TCP Optimization**: Socket-level tuning including TCP_NODELAY and buffer optimization
-- **Parallel Processing**: Multi-worker architecture with dynamic worker adjustment
-- **Buffer Management**: Configurable buffering strategies for different network conditions
-- **Resource Efficiency**: Minimal memory footprint with proper resource cleanup
-
-#### Enterprise Quality
-- **Error Categorization**: Structured error types (NetworkError, FileSystemError, etc.)
-- **Security Best Practices**: Input validation, path sanitization, and access control
-- **Monitoring Integration**: Comprehensive metrics and observability features
-- **Production Readiness**: Graceful shutdown, signal handling, and operational excellence
-
-### Scalability & Performance
-
-#### File Size Support
-- **Small Files (MB)**: Optimized with MD5 for speed
-- **Large Files (GB)**: Balanced performance with intelligent chunking
-- **Enterprise Files (TB+)**: BLAKE2b optimization for 35% faster processing
-- **Memory Efficiency**: Constant memory usage regardless of file size
-
-#### Network Adaptability
-- **LAN Optimization**: High-throughput settings for local network transfers
-- **WAN Adaptation**: Intelligent handling of latency and bandwidth constraints
-- **Quality Assessment**: Real-time network condition monitoring and adaptation
-- **Congestion Handling**: Automatic rate adjustment based on network performance
+### Performance & Scalability
+- **File Size Support**: Optimized for files from MB to TB+ with constant memory usage
+- **Network Adaptability**: Intelligent handling of LAN, WAN, and congested networks
+- **Streaming Operations**: Memory-efficient processing regardless of file size
+- **TCP Optimization**: Socket-level tuning for maximum performance
 
 ## 📊 Monitoring & Observability
 
-### Structured Logging System
+JustDataCopier provides enterprise-grade logging and monitoring:
 
-JustDataCopier provides enterprise-grade logging with comprehensive observability:
+### Structured Logging
+- **JSON-Based**: Compatible with enterprise log management systems
+- **Session Tracking**: Unique session IDs for complete activity correlation
+- **Security Focus**: No sensitive file paths or hash values in output
+- **Performance Metrics**: Real-time transfer statistics and network conditions
 
-#### Session-Based Tracking
-- **Unique Session IDs**: Correlate activities across client-server communication
-- **Session Lifecycle**: Complete tracking from initialization to completion
-- **Transfer Metrics**: Real-time progress, throughput, and performance statistics
-- **Configuration Logging**: Parameter settings and optimization choices
+### Operational Benefits
+- **Troubleshooting**: Clear error categorization for quick issue resolution
+- **Performance Analysis**: Historical data for optimization
+- **Enterprise Integration**: Compatible with monitoring and alerting systems
+- **Audit Trail**: Complete session tracking for compliance
 
-#### Network Performance Monitoring
-- **Real-time Metrics**: Round-trip time, bandwidth estimation, packet loss percentage
-- **Quality Assessment**: Automatic network quality rating (fair/good/excellent)
-- **Performance Adaptation**: Dynamic adjustment logging based on network conditions
-- **Transfer Statistics**: Chunk-level progress with rate and efficiency metrics
+## 📄 License and Disclaimer
 
-#### Security & Privacy Focus
-- **No Sensitive Data**: File paths and hash values excluded from logs
-- **Error Classification**: Structured error types without sensitive details
-- **Clean Output**: Professional log format suitable for enterprise monitoring
-- **Session Context**: All activities traceable through session identifiers
+JustDataCopier is provided as free software under the MIT License, designed to help you achieve reliable and efficient file transfers.
 
-### Log Integration
+### 🎯 **Positive Use Statement**
+This enterprise-grade utility is built with care to provide robust, secure, and high-performance file transfer capabilities for your critical data operations. We're committed to delivering software that enhances your productivity and data management workflows.
 
-#### Format & Structure
-- **JSON-Based**: Structured logging compatible with enterprise log management systems
-- **Timestamped Entries**: Precise timing information for performance analysis
-- **Categorized Levels**: DEBUG, INFO, WARN, ERROR with appropriate detail levels
-- **Metric Rich**: Performance data, network conditions, and transfer progress
+### ⚠️ **Important Disclaimers**
+While we've designed JustDataCopier with enterprise-grade reliability and extensive testing, please note:
 
-#### Operational Benefits
-- **Troubleshooting**: Clear error categorization and context for issue resolution
-- **Performance Analysis**: Historical data for network and transfer optimization
-- **Monitoring Integration**: Compatible with enterprise monitoring and alerting systems
-- **Audit Trail**: Complete session tracking for compliance and operational review
+- **Data Responsibility**: Users are solely responsible for backing up their data before transfers. Always maintain proper backups of critical files.
+- **Usage Responsibility**: This software is provided "as is" without warranty. Users assume full responsibility for its proper configuration and use.
+- **No Liability**: The author and contributors are not liable for any data loss, corruption, or damages resulting from the use or misuse of this software.
+- **Testing Recommended**: Always test transfers with non-critical data first to ensure compatibility with your environment.
+- **Network Security**: Users are responsible for ensuring secure network configurations and appropriate access controls.
 
-## 📄 License and Attribution
+### 🤝 **Professional Use Guidelines**
+- **Attribution Required**: For integration into commercial products or services, proper attribution to the original author is required
+- **Community Spirit**: This software embodies the open-source philosophy of shared knowledge and collaborative improvement
+- **Enterprise Ready**: Includes comprehensive features suitable for mission-critical operations when properly configured and tested
 
-JustDataCopier is provided as free software for non-commercial use under the MIT License.
+### 📝 **Attribution Requirements**
+- **Author**: Yousaf Gill <yousafgill@gmail.com>
+- **Repository**: https://github.com/yousafgill/just-data-copier
+- **Copyright**: © 2025 Yousaf Gill. All rights reserved.
 
-**Professional Use Disclaimer**:
-- This enterprise-grade utility is provided "as is" with comprehensive features for production environments
-- For integration into commercial products or services, proper attribution to the original author is required
-- The software includes enterprise features suitable for mission-critical file transfer operations
-
-**Attribution Requirements**:
-- Author: Yousaf Gill <yousafgill@gmail.com>
-- Repository: https://github.com/yousafgill/just-data-copier
-- Copyright © 2025 Yousaf Gill. All rights reserved.
+*By using this software, you acknowledge that you have read, understood, and agree to these terms while appreciating the effort put into creating a powerful tool for your file transfer needs.*
 
 ## 🤝 Contributing
 
