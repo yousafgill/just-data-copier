@@ -176,6 +176,11 @@ func initializeTransfer(writer *bufio.Writer, fileInfo *filesystem.FileInfo, cfg
 		return err
 	}
 
+	// Send client's hash verification preference
+	if err := protocol.SendBool(writer, cfg.VerifyHash); err != nil {
+		return err
+	}
+
 	if err := protocol.FlushWriter(writer); err != nil {
 		return err
 	}
