@@ -25,10 +25,12 @@ ping google.com
 
 | Connection Type | Chunk Size | Buffer Size | Workers | Extra Options |
 |----------------|------------|-------------|---------|---------------|
-| **Office LAN (Fast)** | 8MB | 1MB | 8 | `-verify=true` |
+| **Office LAN (Fast)** | 8MB | 1MB | 8 | `-verify` |
 | **Good Internet** | 4MB | 512KB | 4 | `-adaptive` |
 | **Slow Internet** | 1MB | 256KB | 2 | `-adaptive -retries 10` |
 | **Unstable Connection** | 2MB | 512KB | 2 | `-adaptive -timeout 5m` |
+
+**Note**: `-verify` enables hash verification for file integrity (both client and server must enable it).
 
 ## 📊 How Fast Will It Be?
 
@@ -90,3 +92,48 @@ jdc.exe -file large.dat -connect server:8000 -buffer 131072 -workers 2
 
 
 **Note**: All examples work on Windows and include sample batch files and validation steps. Adjust the settings based on your actual network speed and conditions.
+
+## 📖 Quick Command Reference
+
+### Basic Commands
+```cmd
+# Server Mode (receive files)
+jdc.exe -server -output "D:\ReceivedFiles"
+
+# Client Mode (send files)
+jdc.exe -file "myfile.dat" -connect server-ip:8000
+
+# With hash verification (both sides must enable)
+# Server:
+jdc.exe -server -output "D:\ReceivedFiles" -verify
+
+# Client:
+jdc.exe -file "myfile.dat" -connect server-ip:8000 -verify
+```
+
+### Most Common Options
+```cmd
+-verify                    # Enable hash verification (recommended for important files)
+-chunk <size>              # Chunk size: 1048576 (1MB), 2097152 (2MB), 4194304 (4MB), 8388608 (8MB)
+-workers <number>          # Number of parallel transfers: 2, 4, 8
+-buffer <size>             # Buffer size: 262144 (256KB), 524288 (512KB), 1048576 (1MB)
+-adaptive                  # Automatically adjust to network conditions (good for internet)
+-compress                  # Enable compression (good for text files, bad for ZIP/videos)
+-timeout <duration>        # How long to wait: 2m, 5m, 1h, 6h
+-retries <number>          # How many times to retry: 5, 10, 15
+-progress                  # Show progress bar (default: on)
+```
+
+### Size Reference
+```cmd
+# Chunk sizes:
+1048576    = 1MB    (slow/unstable internet)
+2097152    = 2MB    (good internet, default)
+4194304    = 4MB    (fast internet)
+8388608    = 8MB    (LAN/very fast connections)
+
+# Buffer sizes:
+262144     = 256KB  (slow connections)
+524288     = 512KB  (normal connections, default)
+1048576    = 1MB    (fast connections)
+```

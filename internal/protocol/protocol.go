@@ -277,6 +277,28 @@ func ReadHashAlgorithm(ctx context.Context, reader *bufio.Reader) (HashAlgorithm
 	}
 }
 
+// SendBool sends a boolean value as a string
+func SendBool(writer *bufio.Writer, val bool) error {
+	if val {
+		return SendString(writer, "true")
+	}
+	return SendString(writer, "false")
+}
+
+// ReadBool reads a boolean value as a string
+func ReadBool(ctx context.Context, reader *bufio.Reader) (bool, error) {
+	str, err := ReadString(ctx, reader)
+	if err != nil {
+		return false, err
+	}
+
+	val, err := strconv.ParseBool(str)
+	if err != nil {
+		return false, errors.NewProtocolError("read_bool", fmt.Sprintf("invalid boolean: %s", str), err)
+	}
+	return val, nil
+}
+
 // Helper functions for context-aware I/O operations
 
 func readByteWithContext(ctx context.Context, reader *bufio.Reader) (byte, error) {

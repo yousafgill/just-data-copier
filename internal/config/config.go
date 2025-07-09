@@ -108,7 +108,7 @@ func ParseFlags() (*Config, error) {
 	bufferSize := flag.Int("buffer", DefaultBufferSize, "Buffer size in bytes (512KB default)")
 	workers := flag.Int("workers", runtime.NumCPU()/2, "Number of worker threads")
 	compression := flag.Bool("compress", false, "Enable gzip compression")
-	verifyHash := flag.Bool("verify", true, "Verify file integrity with MD5")
+	verifyHash := flag.Bool("verify", false, "Verify file integrity using hash comparison between client and server")
 	showProgress := flag.Bool("progress", true, "Show progress during transfer")
 	timeout := flag.Duration("timeout", DefaultTimeout, "Operation timeout")
 	retries := flag.Int("retries", DefaultRetries, "Number of retries for failed operations")

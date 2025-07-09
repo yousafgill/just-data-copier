@@ -138,6 +138,14 @@ func handleFileTransfer(reader *bufio.Reader, writer *bufio.Writer, conn net.Con
 		return
 	}
 
+	// Read client's hash verification preference
+	clientWantsVerification, err := protocol.ReadBool(ctx, reader)
+	if err != nil {
+		slog.Error("Failed to read client verification preference", "error", err)
+		protocol.SendError(writer, "Failed to read verification preference")
+		return
+	}
+
 	// Validate file size
 	if fileSize <= 0 {
 		slog.Error("Invalid file size", "size", fileSize)
@@ -146,6 +154,15 @@ func handleFileTransfer(reader *bufio.Reader, writer *bufio.Writer, conn net.Con
 	}
 
 	logging.LogSessionStart("SERVER", fileSize, cfg.ChunkSize, cfg.Workers)
+
+	// Determine if hash verification should be performed
+	// Only verify if BOTH client and server want verification
+	shouldVerifyHash := cfg.VerifyHash && clientWantsVerification
+
+	slog.Info("Hash verification settings",
+		"server_wants_verification", cfg.VerifyHash,
+		"client_wants_verification", clientWantsVerification,
+		"will_verify", shouldVerifyHash)
 
 	// Setup transfer state
 	outputPath := filepath.Join(cfg.OutputDir, baseFilename)
@@ -231,14 +248,18 @@ func handleFileTransfer(reader *bufio.Reader, writer *bufio.Writer, conn net.Con
 		return
 	}
 
-	// Verify file hash if requested
-	if cfg.VerifyHash {
+	// Verify file hash if both client and server want verification
+	if shouldVerifyHash {
 		if err := verifyFileHash(ctx, reader, writer, outFile, fileSize); err != nil {
 			slog.Error("Hash verification failed", "error", err)
 			os.Remove(outputPath)
 			protocol.SendError(writer, "Hash verification failed")
 			return
 		}
+	} else {
+		slog.Info("Skipping hash verification",
+			"server_verify_setting", cfg.VerifyHash,
+			"client_verify_setting", clientWantsVerification)
 	}
 
 	// Cleanup and complete

@@ -8,7 +8,7 @@ JustDataCopier is a high-performance, enterprise-grade network file transfer uti
 ## 🚀 Key Features
 
 - **High-Performance Transfer**: Optimized parallel processing with configurable chunks up to 2TB+
-- **Smart Hash Verification**: Auto-selects MD5 (<50GB) or BLAKE2b (≥50GB) for 35% faster processing
+- **Smart Hash Verification**: Optional hash verification (disabled by default) with auto-selection of MD5 (<50GB) or BLAKE2b (≥50GB) for 35% faster processing
 - **Intelligent Compression**: Automatic file type detection with optimized compression levels
 - **Resume Capability**: Chunk-level precision resume with integrity verification
 - **Network Adaptation**: Real-time profiling with automatic performance tuning
@@ -44,12 +44,81 @@ jdc -file ./large_log_file.txt -connect server_address:8000 -compress
 ```
 
 ### Common Options
+- `-verify`: Enable hash verification between client and server (default: false)
 - `-compress`: Enable compression (optimized by file type)
 - `-chunk <bytes>`: Chunk size (default: 2MB)
 - `-buffer <bytes>`: Buffer size (default: 512KB)
 - `-workers <num>`: Concurrent workers (default: half CPU cores)
 - `-adaptive`: Enable adaptive network optimization
 - `-timeout <duration>`: Operation timeout (default: 2m)
+
+## 📖 Complete Command Reference
+
+### Server Mode Commands
+```bash
+# Basic server
+jdc -server
+
+# Server with custom settings
+jdc -server -listen <address:port> -output <directory> [options]
+
+# All server options:
+-server                    # Run in server mode
+-listen <address:port>     # Listen address (default: 0.0.0.0:8000)
+-output <directory>        # Output directory (default: ./output)
+-verify                    # Enable hash verification (default: false)
+-workers <number>          # Worker threads (default: half CPU cores)
+-buffer <bytes>            # Buffer size (default: 512KB)
+-timeout <duration>        # Operation timeout (default: 2m)
+-retries <number>          # Retry attempts (default: 5)
+-progress                  # Show progress (default: true)
+-adaptive                  # Enable adaptive delays (default: false)
+-delay <duration>          # Chunk delay (default: 10ms)
+-min-delay <duration>      # Minimum adaptive delay (default: 1ms)
+-max-delay <duration>      # Maximum adaptive delay (default: 100ms)
+```
+
+### Client Mode Commands
+```bash
+# Basic file transfer
+jdc -file <path> -connect <server:port>
+
+# Client with custom settings
+jdc -file <path> -connect <server:port> [options]
+
+# All client options:
+-file <path>               # File to transfer (required)
+-connect <server:port>     # Server address (default: localhost:8000)
+-verify                    # Enable hash verification (default: false)
+-compress                  # Enable compression (default: false)
+-chunk <bytes>             # Chunk size (default: 2MB)
+-workers <number>          # Worker threads (default: half CPU cores)
+-buffer <bytes>            # Buffer size (default: 512KB)
+-timeout <duration>        # Operation timeout (default: 2m)
+-retries <number>          # Retry attempts (default: 5)
+-progress                  # Show progress (default: true)
+-adaptive                  # Enable adaptive delays (default: false)
+-delay <duration>          # Chunk delay (default: 10ms)
+-min-delay <duration>      # Minimum adaptive delay (default: 1ms)
+-max-delay <duration>      # Maximum adaptive delay (default: 100ms)
+```
+
+### Hash Verification Examples
+```bash
+# Transfer with hash verification (both client and server must enable)
+# Server:
+jdc -server -verify
+
+# Client:
+jdc -file myfile.dat -connect server:8000 -verify
+
+# Transfer without hash verification (default behavior)
+# Server:
+jdc -server
+
+# Client:
+jdc -file myfile.dat -connect server:8000
+```
 
 ## 🔐 Security & Performance
 
@@ -61,19 +130,21 @@ jdc -file ./large_log_file.txt -connect server_address:8000 -compress
 
 ### Performance Optimization
 
-#### Hash Algorithm Intelligence
+#### Hash Algorithm Intelligence (when `-verify` is enabled)
 | File Size | Algorithm | Performance Benefit |
 |-----------|-----------|-------------------|
 | < 50GB | MD5 | Fastest for smaller files |
 | ≥ 50GB | BLAKE2b | 35% faster than SHA-256, secure |
+
+**Note**: Hash verification is disabled by default. Enable with `-verify` flag on both client and server.
 
 #### Network Tuning Examples
 ```bash
 # High-speed LAN (1Gbps+)
 jdc -file ./file.dat -connect server:8000 -chunk 8388608 -workers 8
 
-# Internet (100Mbps+)  
-jdc -file ./file.dat -connect server:8000 -chunk 4194304 -workers 4 -adaptive
+# Internet (100Mbps+) with verification
+jdc -file ./file.dat -connect server:8000 -chunk 4194304 -workers 4 -adaptive -verify
 
 # High-latency Network
 jdc -file ./file.dat -connect server:8000 -chunk 1048576 -adaptive

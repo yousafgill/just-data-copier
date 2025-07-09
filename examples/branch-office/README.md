@@ -23,6 +23,7 @@ jdc.exe -server ^
     -buffer 524288 ^
     -timeout 8h ^
     -retries 10 ^
+    -verify ^
     -log-level info
 ```
 
@@ -36,7 +37,7 @@ jdc.exe -file "C:\Files\project_archive_20250705.zip" ^
     -workers 3 ^
     -adaptive ^
     -compress=false ^
-    -verify=true ^
+    -verify ^
     -timeout 8h ^
     -retries 15 ^
     -min-delay 5ms ^
@@ -56,7 +57,9 @@ jdc.exe -file "C:\Files\project_archive_20250705.zip" ^
 - **Retries**: `15` - More retries because internet can be flaky
 - **Timeout**: `8h` - Long timeout for large video files and overnight transfers
 - **Compression**: `false` - ZIP/RAR files are already compressed, videos don't compress well
-- **Verify**: `true` - Always verify file integrity after transfer
+- **Verify**: Enabled on both client and server - Always verify file integrity after transfer
+
+**Note**: Hash verification requires both server and client to have `-verify` flag enabled.
 
 ## 📋 Complete Branch Office Script
 
@@ -169,7 +172,7 @@ jdc.exe -file "%file_path%" ^
         -buffer 524288 ^
         -workers !WORKERS! ^
         -adaptive ^
-        -verify=true ^
+        -verify ^
         -timeout !TIMEOUT! ^
         -retries 15 ^
         -min-delay 5ms ^
@@ -334,7 +337,7 @@ for %%e in (*.zip *.rar *.7z) do (
                 -chunk 2097152 ^
                 -workers 3 ^
                 -adaptive ^
-                -verify=true ^
+                -verify ^
                 -timeout 6h ^
                 -retries 10
         
@@ -356,7 +359,7 @@ for %%e in (*.mp4 *.avi *.mkv *.mov *.wmv *.flv) do (
                 -chunk 8388608 ^
                 -workers 2 ^
                 -adaptive ^
-                -verify=true ^
+                -verify ^
                 -timeout 12h ^
                 -retries 8
         
@@ -630,7 +633,7 @@ function Transfer-File($FilePath) {
         "-chunk", $settings.ChunkSize,
         "-workers", $settings.Workers,
         "-adaptive",
-        "-verify=true",
+        "-verify",
         "-timeout", $settings.Timeout,
         "-retries", "15",
         "-log-level", "info"
@@ -736,103 +739,55 @@ if ($failCount -eq 0) {
 }
 ```
 
-## 🧹 Windows Maintenance & Cleanup
+## 📖 Command Reference for Branch Office Transfers
 
-### Automatic Cleanup Script
-```batch
-@echo off
-rem cleanup-transferred-files.bat
-rem Clean up successfully transferred files and old logs
+### Main Office Server (Receiver)
+```cmd
+rem Basic setup for receiving branch office files
+jdc.exe -server -output "D:\BranchFiles" -verify
 
-set SOURCE_DIR=C:\Files
-set LOG_DIR=C:\Logs
-set DAYS_TO_KEEP=7
-set MAX_LOG_SIZE=50MB
-
-echo Starting cleanup for files older than %DAYS_TO_KEEP% days...
-
-rem Clean up old log files
-echo Cleaning old log files...
-forfiles /p "%LOG_DIR%" /m "*.log" /d -%DAYS_TO_KEEP% /c "cmd /c del @path" 2>nul
-
-rem Archive large log files
-for %%f in ("%LOG_DIR%\*.log") do (
-    for /f %%s in ('powershell -command "(Get-Item '%%f').Length"') do (
-        if %%s gtr 52428800 (
-            echo Archiving large log file: %%~nxf
-            "C:\Program Files\7-Zip\7z.exe" a "%LOG_DIR%\%%~nf_%date:~10,4%%date:~4,2%%date:~7,2%.zip" "%%f"
-            del "%%f"
-        )
-    )
-)
-
-rem Clean up old state files
-del /q "%TEMP%\*.justdatacopier.state" 2>nul
-
-echo Cleanup complete
+rem Full command with all options for internet transfers:
+jdc.exe -server ^
+    -listen <ip:port>          rem Default: 0.0.0.0:8000
+    -output <directory>        rem Where to store received files
+    -verify                    rem Enable hash verification (recommended)
+    -workers <number>          rem Default: half CPU cores (use 4 for internet)
+    -buffer <bytes>            rem Default: 512KB (good for internet)
+    -timeout <duration>        rem Default: 2m (use 8h for large files over internet)
+    -retries <number>          rem Default: 5 (use 10+ for internet)
+    -progress                  rem Show progress (default: true)
 ```
 
-### Disk Space Monitoring
-```batch
-@echo off
-rem check-disk-space.bat
-rem Monitor disk space and alert if running low
+### Branch Office Client (Sender)
+```cmd
+rem Basic file transfer over internet
+jdc.exe -file "archive.zip" -connect main-office.company.com:8000 -verify -adaptive
 
-set DRIVE=C:
-set MIN_FREE_GB=10
-
-for /f "tokens=3" %%a in ('dir /-c %DRIVE% ^| find "bytes free"') do set FREE_BYTES=%%a
-set /a FREE_GB=%FREE_BYTES% / 1073741824
-
-if %FREE_GB% lss %MIN_FREE_GB% (
-    echo WARNING: Low disk space on %DRIVE% - Only %FREE_GB%GB free
-    echo Consider cleaning up old files or moving them to archive storage
-    pause
-) else (
-    echo Disk space OK: %FREE_GB%GB free on %DRIVE%
-)
+rem Full command with all options for internet transfers:
+jdc.exe -file <file_path> ^
+    -connect <server:port>     rem Main office server address
+    -verify                    rem Enable hash verification (recommended)
+    -chunk <bytes>             rem Default: 2MB (good for internet, use 1MB for slow connections)
+    -compress                  rem Enable compression (false for ZIP/RAR/videos)
+    -workers <number>          rem Default: half CPU cores (use 2-3 for internet)
+    -buffer <bytes>            rem Default: 512KB (good for internet)
+    -timeout <duration>        rem Default: 2m (use 8h+ for large files over internet)
+    -retries <number>          rem Default: 5 (use 15+ for internet)
+    -progress                  rem Show progress (default: true)
+    -adaptive                  rem Enable adaptive delays (highly recommended for internet)
+    -delay <duration>          rem Chunk delay (default: 10ms)
+    -min-delay <duration>      rem Minimum adaptive delay (default: 1ms, use 5ms for internet)
+    -max-delay <duration>      rem Maximum adaptive delay (default: 100ms, use 500ms+ for internet)
 ```
 
-### Windows Performance Optimization
-```batch
-@echo off
-rem optimize-for-transfers.bat
-rem Temporarily optimize Windows settings for large file transfers
+### File Type Optimizations
+```cmd
+rem For ZIP/RAR archives (already compressed):
+jdc.exe -file "archive.zip" -connect server:8000 -verify -chunk 4194304 -workers 3 -adaptive
 
-echo Optimizing Windows for file transfers...
+rem For video files (large, already compressed):
+jdc.exe -file "video.mp4" -connect server:8000 -verify -chunk 8388608 -workers 2 -timeout 12h -adaptive
 
-rem Disable Windows Update during transfers
-sc config wuauserv start= disabled
-sc stop wuauserv
-
-rem Set network adapter to high performance
-powershell -command "Get-NetAdapter | Set-NetAdapterAdvancedProperty -DisplayName 'Power Saving Mode' -DisplayValue 'Disabled'"
-
-rem Increase network buffer sizes
-netsh int tcp set global autotuninglevel=normal
-netsh int tcp set global chimney=enabled
-
-echo Optimization complete
-echo Remember to run restore-settings.bat after transfers complete
-```
-
-### Restore Normal Settings
-```batch
-@echo off
-rem restore-settings.bat
-rem Restore normal Windows settings after transfers
-
-echo Restoring normal Windows settings...
-
-rem Re-enable Windows Update
-sc config wuauserv start= auto
-sc start wuauserv
-
-rem Reset network settings to defaults
-netsh int tcp set global autotuninglevel=normal
-netsh int tcp set global chimney=disabled
-
-echo Settings restored to normal
-```
-
-This complete Windows-focused setup provides everything needed for reliable branch office file transfers with proper maintenance and optimization.
+rem For small files (documents, etc.):
+jdc.exe -file "document.pdf" -connect server:8000 -verify -chunk 2097152 -workers 4 -adaptive
+````

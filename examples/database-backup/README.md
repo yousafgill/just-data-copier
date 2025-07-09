@@ -14,26 +14,27 @@ This example shows you how to efficiently move large database backup files betwe
 
 ### Setup the Backup Server (Where Files Go)
 ```cmd
-rem Start the server to receive big database backup files
+rem Start the server to receive big database backup files with verification
 jdc.exe -server ^
     -listen 0.0.0.0:8000 ^
     -output "D:\Database_Backups" ^
     -workers 8 ^
     -buffer 1048576 ^
     -timeout 6h ^
+    -verify ^
     -log-level info
 ```
 
 ### Setup the Database Server (Where Files Come From)
 ```cmd
-rem Send the SQL Server database backup file
+rem Send the SQL Server database backup file with verification
 jdc.exe -file "C:\DatabaseBackups\prod_db_20250705.bak" ^
     -connect backup-server:8000 ^
     -chunk 8388608 ^
     -buffer 1048576 ^
     -workers 8 ^
     -compress=false ^
-    -verify=true ^
+    -verify ^
     -timeout 6h ^
     -retries 5
 ```
@@ -47,9 +48,11 @@ jdc.exe -file "C:\DatabaseBackups\prod_db_20250705.bak" ^
 - **Compression**: `false` - SQL Server backup files are already compressed
 
 ### Safety Settings
-- **Verify**: `true` - Very important for database files!
+- **Verify**: Enabled on both client and server - Very important for database files!
 - **Timeout**: `6h` - Gives plenty of time for big files
 - **Retries**: `5` - Tries again if something goes wrong
+
+**Note**: Hash verification requires both server and client to have `-verify` flag enabled.
 
 ## 📋 Complete Example (Batch File)
 
@@ -93,7 +96,7 @@ for %%f in ("%DB_BACKUP_DIR%\*%TODAY%*.bak") do (
             -chunk 8388608 ^
             -buffer 1048576 ^
             -workers 8 ^
-            -verify=true ^
+            -verify ^
             -timeout 6h ^
             -retries 5 ^
             -log-level info
@@ -286,7 +289,7 @@ foreach ($file in $backupFiles) {
         "-chunk", "8388608",
         "-buffer", "1048576", 
         "-workers", "8",
-        "-verify=true",
+        "-verify",
         "-timeout", "6h",
         "-retries", "5"
     ) -Wait -PassThru
@@ -362,7 +365,7 @@ jdc.exe -file "%BACKUP_FILE%" ^
         -chunk 8388608 ^
         -buffer 1048576 ^
         -workers 8 ^
-        -verify=true ^
+        -verify ^
         -timeout 6h ^
         -retries 5 ^
         -log-level info
@@ -532,3 +535,54 @@ net start "JDC-BackupServer"
 ```
 
 This configuration provides enterprise-grade SQL Server backup transfer with optimal performance, reliability, and Windows integration capabilities.
+
+## 📖 Command Reference for Database Backups
+
+### Server Side (Backup Server)
+```cmd
+rem Basic setup for receiving database backups
+jdc.exe -server -output "D:\Database_Backups" -verify
+
+rem Full command with all options:
+jdc.exe -server ^
+    -listen <ip:port>          rem Default: 0.0.0.0:8000
+    -output <directory>        rem Where to store backup files
+    -verify                    rem Enable hash verification (recommended for DB)
+    -workers <number>          rem Default: half CPU cores (use 8 for fast networks)
+    -buffer <bytes>            rem Default: 512KB (use 1MB for DB backups)
+    -timeout <duration>        rem Default: 2m (use 6h for large DB backups)
+    -retries <number>          rem Default: 5
+    -progress                  rem Show progress (default: true)
+```
+
+### Client Side (Database Server)
+```cmd
+rem Basic database backup transfer
+jdc.exe -file "backup.bak" -connect backup-server:8000 -verify
+
+rem Full command with all options:
+jdc.exe -file <backup_file.bak> ^
+    -connect <server:port>     rem Backup server address
+    -verify                    rem Enable hash verification (recommended for DB)
+    -chunk <bytes>             rem Default: 2MB (use 8MB for fast networks)
+    -compress                  rem Enable compression (usually false for .bak files)
+    -workers <number>          rem Default: half CPU cores (use 8 for fast networks)
+    -buffer <bytes>            rem Default: 512KB (use 1MB for DB backups)
+    -timeout <duration>        rem Default: 2m (use 6h for large DB backups)
+    -retries <number>          rem Default: 5
+    -progress                  rem Show progress (default: true)
+    -adaptive                  rem Enable adaptive delays (useful for unstable networks)
+    -delay <duration>          rem Chunk delay (default: 10ms)
+    -min-delay <duration>      rem Minimum adaptive delay (default: 1ms)
+    -max-delay <duration>      rem Maximum adaptive delay (default: 100ms)
+```
+
+### Recommended Database Backup Settings
+```cmd
+rem For large SQL Server backups (100GB-2TB) on fast networks:
+rem Server:
+jdc.exe -server -output "D:\Database_Backups" -verify -workers 8 -buffer 1048576 -timeout 6h
+
+rem Client:
+jdc.exe -file "large_db.bak" -connect backup-server:8000 -verify -chunk 8388608 -workers 8 -buffer 1048576 -timeout 6h
+```
