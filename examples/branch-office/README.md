@@ -4,7 +4,14 @@ This example shows you how to reliably send files from your branch office to the
 
 ## 📊 What We're Doing
 
-**Situation**: You need to send daily files from a branch office to your main data center over the internet
+**Situation**: You need to send dai        jdc.exe -file "%%f" ^
+                -connect %MAIN_OFFICE% ^
+                -chunk 2097152 ^
+                -workers 3 ^
+                -adaptive ^
+                -verify ^
+                -timeout 8h ^
+                -retries 15 from a branch office to your main data center over the internet
 - **File Types**: ZIP archives, RAR files, video files (MP4, AVI, MKV), and various media content
 - **File Sizes**: Few MBs to several GBs, sometimes TB-sized video collections
 - **Network**: Regular internet connection, maybe 50-200 Mbps, speed can vary throughout the day
